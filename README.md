@@ -59,9 +59,10 @@ $ cargo run --bin main
 
 ## 📦 依赖项
 - [crossterm](https://crates.io/crates/crossterm) - 跨平台终端控制
-- [tui-rs](https://crates.io/crates/tui) - 终端用户界面构建
-- [clipboard](https://crates.io/crates/clipboard) - 剪贴板操作
-- [anyhow](https://crates.io/crates/anyhow) - 错误处理
+- [ratatui](https://crates.io/crates/ratatui) - 终端用户界面构建
+- [copypasta](https://crates.io/crates/copypasta) - 剪贴板操作
+- [serde](https://crates.io/crates/serde) - 序列化
+- [directories](https://crates.io/crates/directories) - 获取历史文件路径
 
 ## 🤝 贡献
 欢迎提交Issue和PR！请遵循以下步骤：
@@ -72,4 +73,4 @@ $ cargo run --bin main
 5. 创建Pull Request
 
 ## 📄 许可证
-该项目许可证由Apache提供支持，详情可见(Apache LICENSE 2.0)[LICENSE]
+该项目许可证由Apache提供支持，详情可见[LICENSE](LICENSE)
