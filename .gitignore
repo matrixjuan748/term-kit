@@ -1,4 +1,16 @@
 ## Rust .gitignore
-# Compiled files
-target/
+# 编译生成的文件
+/target/
+
+# 依赖库缓存
+/Cargo.lock
+
+# 调试文件
+/src/**/*.rs.bk
+
+# 文档缓存
+/docs/_book/
+
+# 编辑器缓存
+/.vscode/
 
