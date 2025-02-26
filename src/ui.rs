@@ -3,11 +3,10 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Line, Text},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, Paragraph, Wrap},
     Frame
 };
 use crate::app::App;
-use tui::widgets::Wrap;
 
 pub fn draw_ui(f: &mut Frame, app: &mut App) {
     let main_layout = Layout::default()
@@ -42,12 +41,12 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
             .borders(Borders::ALL)
             .style(Style::default().bg(Color::DarkGray));
 
-        let text = Text::from(app.get_help_text())
-            .wrap(Wrap { trim: true });
+        let text = Text::from(app.get_help_text());
 
         let help_paragraph = Paragraph::new(text)
             .block(help_block)
-            .alignment(ratatui::layout::Alignment::Left);
+            .alignment(ratatui::layout::Alignment::Left)
+            .wrap(Wrap { trim: true });
 
         let area = centered_rect(60, 30, f.area());
         f.render_widget(help_paragraph, area);
