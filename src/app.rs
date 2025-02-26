@@ -1,4 +1,4 @@
-use copypasta::ClipboardProvider;
+use std::process::Command;
 // app.rs
 use serde::{Deserialize, Serialize};
 use std::cell::Cell;
@@ -80,22 +80,23 @@ impl App {
 
     pub fn copy_selected(&self) {
         if self.history.is_empty() {
-            return;  // 
+            eprintln!("⚠️ 没有可复制的历史记录");
+            return;
         }
-    
+
         let selected_cmd = &self.history[self.selected];
+
     
-        match copypasta::ClipboardContext::new() {
-            Ok(mut ctx) => {
-                if let Err(err) = ctx.set_contents(selected_cmd.clone()) {
-                    eprintln!("复制失败: {:?}", err);
-                }
-            }
-            Err(err) => {
-                eprintln!("剪贴板初始化失败: {:?}", err);
-            }
+        let output = Command::new("wl-copy")
+        .arg(selected_cmd)
+        .output();
+
+        match output {
+            Ok(_) => println!("✅ 已复制: {}", selected_cmd),
+            Err(err) => eprintln!("❌ 复制失败: {:?}", err),
         }
     }
+
     
 
     pub fn get_help_text(&self) -> &'static str {

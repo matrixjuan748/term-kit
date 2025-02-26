@@ -22,7 +22,9 @@ pub fn handle_events<B: ratatui::backend::Backend>(
                     KeyCode::Char('q') => app.should_quit = true,
 
                     
-                    KeyCode::Enter => app.copy_selected(),
+                    KeyCode::Enter => {
+                        app.copy_selected();
+                    }
 
                     
                     KeyCode::Up | KeyCode::Char('k') => app.move_selection(MoveDirection::Up),
