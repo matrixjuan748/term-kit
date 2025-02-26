@@ -1,3 +1,4 @@
+use copypasta::ClipboardProvider;
 // app.rs
 use serde::{Deserialize, Serialize};
 use std::cell::Cell;
@@ -80,6 +81,12 @@ impl App {
             self.skipped_items += 1;
         }
     }
+
+     pub fn copy_selected(&self) {
+        copypasta::ClipboardContext::new()
+           .unwrap()
+           .set_contents(self.history[self.selected].clone()).unwrap();
+     }
 
     pub fn get_help_text(&self) -> &'static str {
         HELP_TEXT
