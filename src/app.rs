@@ -79,10 +79,24 @@ impl App {
     }
 
     pub fn copy_selected(&self) {
-        copypasta::ClipboardContext::new()
-           .unwrap()
-           .set_contents(self.history[self.selected].clone()).unwrap();
-     }
+        if self.history.is_empty() {
+            return;  // 
+        }
+    
+        let selected_cmd = &self.history[self.selected];
+    
+        match copypasta::ClipboardContext::new() {
+            Ok(mut ctx) => {
+                if let Err(err) = ctx.set_contents(selected_cmd.clone()) {
+                    eprintln!("复制失败: {:?}", err);
+                }
+            }
+            Err(err) => {
+                eprintln!("剪贴板初始化失败: {:?}", err);
+            }
+        }
+    }
+    
 
     pub fn get_help_text(&self) -> &'static str {
         HELP_TEXT
@@ -93,8 +107,9 @@ impl App {
     }
 
     pub fn get_history(&self) -> Vec<String> {
-        return self.history.clone().into_iter().filter(|cmd|{
-            return cmd.contains(self.search_query.as_str());
-        }).collect();
-    }
+    self.history.clone().into_iter().filter(|cmd| {
+        cmd.contains(&self.search_query)
+    }).collect()
+}
+    
 }
