@@ -30,7 +30,7 @@ pub enum MoveDirection {
 pub struct App {
     pub history: Vec<String>,
     pub selected: usize,
-    pub input_mode: bool,
+    pub search_mode: bool,
     pub search_query: String,
     pub skipped_items: usize,
     pub size: Cell<usize>,
@@ -44,7 +44,7 @@ impl App {
         Self {
             history,
             selected: 0,
-            input_mode: false,
+            search_mode: false,
             search_query: String::new(),
             skipped_items: 0,
             size: Cell::new(0),
@@ -66,15 +66,11 @@ impl App {
     }
 
     pub fn move_selection(&mut self, direction: MoveDirection) {
-        let len = self.history.len();
-        if len == 0 { return; }
-
-        match direction {
-            MoveDirection::Up if self.selected > 0 => self.selected -= 1,
-            MoveDirection::Down if self.selected < len - 1 => self.selected += 1,
-            _ => {}
+        if direction == MoveDirection::Up && self.selected > 0 {
+            self.selected -= 1;
+        } else if direction == MoveDirection::Down && self.selected < self.history.len() - 1 {
+            self.selected += 1;
         }
-
         if self.selected < self.skipped_items {
             self.skipped_items = self.selected;
         } else if self.selected >= self.skipped_items + self.size.get() {
@@ -82,7 +78,7 @@ impl App {
         }
     }
 
-     pub fn copy_selected(&self) {
+    pub fn copy_selected(&self) {
         copypasta::ClipboardContext::new()
            .unwrap()
            .set_contents(self.history[self.selected].clone()).unwrap();
@@ -90,5 +86,15 @@ impl App {
 
     pub fn get_help_text(&self) -> &'static str {
         HELP_TEXT
+    }
+
+    pub fn set_size(&self, size: usize) {
+        self.size.set(size);
+    }
+
+    pub fn get_history(&self) -> Vec<String> {
+        return self.history.clone().into_iter().filter(|cmd|{
+            return cmd.contains(self.search_query.as_str());
+        }).collect();
     }
 }
