@@ -1,4 +1,3 @@
-// main.rs
 mod app;
 mod events;
 mod ui;
@@ -14,10 +13,9 @@ use std::io::{stdout, Stdout};
 fn main() -> Result<()> {
     let mut terminal = setup_terminal()?;
     let mut app = app::App::new();
-    
-    while !app.should_quit {
-        events::handle_events(&mut terminal, &mut app)?;
-    }
+
+
+    events::handle_events(&mut terminal, &mut app)?;
 
     restore_terminal(&mut terminal)?;
     Ok(())

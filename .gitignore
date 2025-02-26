@@ -1,1 +1,4 @@
-/target
+## Rust .gitignore
+# Compiled files
+target/
+
