@@ -19,7 +19,8 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
         .borders(Borders::ALL)
         .title(" Command History ");
     
-    let items = app.history.iter().enumerate()
+    let items = app.get_history().iter().enumerate()
+        .skip(app.skipped_items)
         .map(|(i, cmd)| {
             let style = if i == app.selected {
                 Style::default().bg(Color::Blue)
@@ -31,6 +32,7 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
         .collect::<Vec<_>>();
 
     let list_area = list_block.inner(main_layout[0]);
+    app.set_size(list_area.height.into());
     f.render_widget(list_block, main_layout[0]);
     f.render_widget(Paragraph::new(items), list_area);
 
