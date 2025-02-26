@@ -9,10 +9,8 @@ pub fn handle_events<B: ratatui::backend::Backend>(
     app: &mut App,
 ) -> Result<()> {
     loop {
-        // ✅ 让 UI 更新
         terminal.draw(|f| draw_ui(f, app))?;
 
-        // ✅ 检查 `should_quit` 变量
         if app.should_quit {
             break;
         }
