@@ -17,6 +17,7 @@ pub fn handle_events<B: ratatui::backend::Backend>(
 
         if event::poll(std::time::Duration::from_millis(100))? {
             if let event::Event::Key(KeyEvent { code, .. }) = event::read()? {
+                app.message = "".to_string();
                 match code {
                     KeyCode::Char('h') => app.show_help = true,
                     KeyCode::Char('q') => {
@@ -31,21 +32,18 @@ pub fn handle_events<B: ratatui::backend::Backend>(
                     KeyCode::Down | KeyCode::Char('j') => app.move_selection(MoveDirection::Down),
                     KeyCode::Char('/') => {
                         app.search_mode = true;
-                        app.search_query.clear();
+                        app.clear_query();
                     }
                     KeyCode::Esc => {
-                        if app.search_mode {
-                            app.search_mode = false;
-                            app.search_query.clear();
-                        } else if app.show_help {
-                            app.show_help = false;
-                        }
+                        app.search_mode = false;
+                        app.show_help = false;
+                        app.clear_query();
                     }
                     KeyCode::Char(c) if app.search_mode => {
-                        app.search_query.push(c);
+                        app.push_query(c);
                     }
                     KeyCode::Backspace if app.search_mode => {
-                        app.search_query.pop();
+                        app.pop_query();
                     }
                     _ => {}
                 }

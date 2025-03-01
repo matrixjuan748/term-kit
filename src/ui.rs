@@ -16,6 +16,7 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
             Constraint::Length(3),  // 顶部信息框
             Constraint::Min(1),     // 历史记录列表
             Constraint::Length(3),  // 底部搜索框
+            Constraint::Length(1),  // 消息提示
         ])
         .split(f.area());
 
@@ -52,10 +53,10 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
     f.render_widget(list_block, layout[1]);
     f.render_widget(Paragraph::new(items), list_area);
 
-    let search_text = if app.search_query.is_empty() {
+    let search_text = if app.get_query().is_empty() && !app.search_mode {
         "输入 '/' 开始搜索...".into()
     } else {
-        format!("/{}", app.search_query)
+        format!("/{}", app.get_query())
     };
 
     let search_bar = Paragraph::new(Text::raw(search_text))
@@ -81,6 +82,8 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
         let area = centered_rect(60, 30, f.area());
         f.render_widget(help_paragraph, area);
     }
+
+    f.render_widget(Paragraph::new(Text::raw(app.message.clone())), layout[3]);
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
