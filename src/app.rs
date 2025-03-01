@@ -1,6 +1,6 @@
-use std::process::{Command, Stdio};
+// app.rs 
 use copypasta::ClipboardProvider;
-// app.rs
+use std::process::{Command, Stdio};
 use serde::{Deserialize, Serialize};
 use std::cell::Cell;
 use std::fs;
@@ -81,14 +81,16 @@ impl App {
 
     pub fn copy_selected(&self) {
         if self.history.is_empty() {
-            // eprintln!("⚠️ 没有可复制的历史记录");
+            // eprintln!("没有可复制的历史记录");
             return;
         }
 
         let selected_cmd = &self.history[self.selected];
-        copypasta::ClipboardContext::new().unwrap().set_contents(selected_cmd.clone()).expect("Failed to copy to clipboard");
+        copypasta::ClipboardContext::new()
+            .unwrap()
+            .set_contents(selected_cmd.clone())
+            .expect("Failed to copy to clipboard");
 
-    
         // let output = Command::new("wl-copy")
         // .arg(selected_cmd)
         // .stdin(Stdio::null())
@@ -97,12 +99,10 @@ impl App {
         // .output();
 
         // match output {
-        //     Ok(_) => println!("✅ 已复制: {}", selected_cmd),
-        //     Err(err) => eprintln!("❌ 复制失败: {:?}", err),
+        //     Ok(_) => println!("已复制: {}", selected_cmd),
+        //     Err(err) => eprintln!("复制失败: {:?}", err),
         // }
     }
-
-    
 
     pub fn get_help_text(&self) -> &'static str {
         HELP_TEXT
@@ -113,9 +113,10 @@ impl App {
     }
 
     pub fn get_history(&self) -> Vec<String> {
-    self.history.clone().into_iter().filter(|cmd| {
-        cmd.contains(&self.search_query)
-    }).collect()
-}
-    
+        self.history
+            .clone()
+            .into_iter()
+            .filter(|cmd| cmd.contains(&self.search_query))
+            .collect()
+    }
 }
