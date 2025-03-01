@@ -26,12 +26,12 @@ Please read our [Code of Conduct](CODE_OF_CONDUCT.md) before participating. We e
 
 3. **Set Upstream**  
    ```bash
-   git remote add upstream https://github.com/your-username/[repository-name].git
+   git remote add upstream https://github.com/WilsonHuang080705/term-kit.git
    ```
 
 4. **Install Dependencies**  
    ```bash
-   npm install  # or other package manager commands
+   cargo r  # or other package manager commands
    ```
 
 ## Development Workflow
