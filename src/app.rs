@@ -1,9 +1,11 @@
 // app.rs 
 use copypasta::ClipboardProvider;
 use serde::{Deserialize, Serialize};
+use std::process::{Command, Stdio};
 use std::cell::Cell;
 use std::fs;
 use std::path::PathBuf;
+use std::env;
 
 #[cfg(all(
     unix,
@@ -68,13 +70,57 @@ impl App {
         }
     }
 
+    fn detect_shell() -> String {
+        env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string()) // Default to bash
+    }
+
+    fn get_history_path(shell: &str) -> PathBuf {
+        let mut path = PathBuf::new();
+        path.push(directories::BaseDirs::new().unwrap().home_dir());
+
+        match shell {
+            s if s.contains("zsh") => path.push(".zsh_history"),
+            s if s.contains("fish") => path.push(".local/share/fish/fish_history"),
+            _ => path.push(".bash_history"),
+        }
+
+        path
+    }
+
+    fn parse_bash_history(content: String) -> Vec<String> {
+        content.lines().rev().take(1000).map(String::from).collect()
+    }
+
+    fn parse_zsh_history(content: String) -> Vec<String> {
+        content.lines()
+            .filter_map(|line| line.splitn(2, ';').nth(1)) // Get everything after `;`
+            .map(String::from)
+            .rev()
+            .take(1000)
+            .collect()
+    }
+
+    fn parse_fish_history(content: String) -> Vec<String> {
+        content.lines()
+            .filter_map(|line| line.strip_prefix("- cmd: ")) // Extract command part
+            .map(String::from)
+            .rev()
+            .take(1000)
+            .collect()
+    }
+
     fn load_history() -> Vec<String> {
-        let mut history_path = PathBuf::new();
-        history_path.push(directories::BaseDirs::new().unwrap().home_dir());
-        history_path.push(".bash_history");
+        let shell = Self::detect_shell();
+        let history_path = Self::get_history_path(&shell);
 
         if let Ok(content) = fs::read_to_string(&history_path) {
-            content.lines().rev().take(1000).map(String::from).collect()
+            if shell.contains("zsh") {
+                Self::parse_zsh_history(content)
+            } else if shell.contains("fish") {
+                Self::parse_fish_history(content)
+            } else {
+                Self::parse_bash_history(content)
+            }
         } else {
             vec!["No history found".into()]
         }
@@ -120,51 +166,67 @@ impl App {
         }
     }
 
-    pub fn copy_selected(&mut self) {
-        if self.queryed_history.is_empty() {
-            self.message = "没有可复制的历史记录".to_string();
+    pub fn copy_selected(&self) {
+        if self.history.is_empty() {
             return;
         }
-
-        let selected_cmd = &self.queryed_history[self.selected];
-        let output;
-        #[cfg(all(
-            unix,
-            not(any(
-                target_os = "macos",
-                target_os = "android",
-                target_os = "ios",
-                target_os = "emscripten"
-            ))
-        ))]
-        if let Ok(_) = std::env::var("WAYLAND_DISPLAY") {
-            let opts = Options::new();
-            output = opts.copy(Source::Bytes(selected_cmd.clone().into_bytes().into()), MimeType::Autodetect)
-                .map_err(|e|e.into());
-        } else {
-            output = copypasta::ClipboardContext::new()
-                .unwrap()
-                .set_contents(selected_cmd.clone());
+    
+        let selected_cmd = &self.history[self.selected];
+        
+        // 跨平台剪贴板支持
+        #[cfg(target_os = "linux")]
+        {
+            // Wayland优先使用wl-copy
+            let wayland_success = Command::new("wl-copy")
+                .arg(selected_cmd)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .is_ok();
+    
+            if !wayland_success {
+                // 回退到X11的xclip
+                let _ = Command::new("xclip")
+                    .args(&["-selection", "clipboard"])
+                    .stdin(Stdio::piped())
+                    .spawn()
+                    .and_then(|mut child| {
+                        child.stdin.as_mut().unwrap().write_all(selected_cmd.as_bytes())
+                    });
+            }
         }
-
-        #[cfg(not(all(
-            unix,
-            not(any(
-                target_os = "macos",
-                target_os = "android",
-                target_os = "ios",
-                target_os = "emscripten"
-            ))
-        )))]
-        let output = copypasta::ClipboardContext::new()
-            .unwrap()
-            .set_contents(selected_cmd.clone());
-
-        match output {
-            Ok(_) => self.message = format!("已复制: {}", selected_cmd),
-            Err(err) => self.message = format!("复制失败: {:?}", err),
+    
+        #[cfg(target_os = "windows")]
+        {
+            // PowerShell剪贴板支持
+            let _ = Command::new("powershell")
+                .args(&[
+                    "-Command",
+                    &format!("Set-Clipboard -Value '{}'", selected_cmd.replace("'", "''"))
+                ])
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn();
         }
+    
+        #[cfg(target_os = "macos")]
+        {
+            // macOS使用pbcopy命令
+            let _ = Command::new("pbcopy")
+                .stdin(Stdio::piped())
+                .spawn()
+                .and_then(|mut child| {
+                    child.stdin.as_mut().unwrap().write_all(selected_cmd.as_bytes())
+                });
+        }
+    
+        // 所有平台的备用方案（使用copypasta库）
+        let _ = copypasta::ClipboardContext::new()
+            .and_then(|mut ctx| ctx.set_contents(selected_cmd.to_owned()));
     }
+
 
     pub fn get_help_text(&self) -> &'static str {
         HELP_TEXT
