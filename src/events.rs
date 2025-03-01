@@ -9,7 +9,7 @@ pub fn handle_events<B: ratatui::backend::Backend>(
     app: &mut App,
 ) -> Result<()> {
     loop {
-        terminal.draw(|f| draw_ui(f, app))?;
+        terminal.draw(|f| draw_ui(f, app))?;  // ✅ 每次事件循环都刷新 UI
 
         if app.should_quit {
             break;
@@ -19,41 +19,34 @@ pub fn handle_events<B: ratatui::backend::Backend>(
             if let event::Event::Key(KeyEvent { code, .. }) = event::read()? {
                 match code {
                     KeyCode::Char('h') => app.show_help = true,
-                    KeyCode::Char('q') => app.should_quit = true,
-
+                    KeyCode::Char('q') => {
+                        app.should_quit = true;
+                    }
                     
-                    KeyCode::Enter => app.copy_selected(),
+                    KeyCode::Enter => {
+                        app.copy_selected();
+                    }
 
-                    
                     KeyCode::Up | KeyCode::Char('k') => app.move_selection(MoveDirection::Up),
                     KeyCode::Down | KeyCode::Char('j') => app.move_selection(MoveDirection::Down),
-
-                    
                     KeyCode::Char('/') => {
                         app.search_mode = true;
                         app.search_query.clear();
                     }
-
-                    
                     KeyCode::Esc => {
                         if app.search_mode {
                             app.search_mode = false;
                             app.search_query.clear();
-                        } else {
+                        } else if app.show_help {
                             app.show_help = false;
                         }
                     }
-
-                    
                     KeyCode::Char(c) if app.search_mode => {
                         app.search_query.push(c);
                     }
-
-                    
                     KeyCode::Backspace if app.search_mode => {
                         app.search_query.pop();
                     }
-
                     _ => {}
                 }
             }
