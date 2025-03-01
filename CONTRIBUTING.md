@@ -71,7 +71,7 @@ Please read our [Code of Conduct](CODE_OF_CONDUCT.md) before participating. We e
 ## Style Guide
 ### Code
 - Follow existing patterns in the codebase
-- Use 2-space indentation (unless language-specific standards differ)
+- Use 4-space indentation (unless language-specific standards differ)
 - Add comments for complex logic
 
 ### Commit Messages
