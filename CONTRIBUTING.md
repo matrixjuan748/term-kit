@@ -87,4 +87,4 @@ Please read our [Code of Conduct](CODE_OF_CONDUCT.md) before participating. We e
 
 ---
 
-Need help? Contact [weiminghuang348@gmail.com] or join our (Discussions)[https://t.me/MatrixHuangShare]
+Need help? Contact [Us](mailto:weiminghuang348@gmail.com) or join our [Discussions](https://t.me/MatrixHuangShare)
