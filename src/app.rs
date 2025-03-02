@@ -1,12 +1,12 @@
-// app.rs 
+// app.rs
 use copypasta::ClipboardProvider;
 use serde::{Deserialize, Serialize};
-use std::io::Write;
-use std::process::{Command, Stdio};
 use std::cell::Cell;
-use std::fs;
-use std::path::PathBuf;
 use std::env;
+use std::fs;
+use std::io::Write;
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
 
 const HELP_TEXT: &str = r#"
 Navigation:
@@ -56,7 +56,7 @@ impl App {
             size: Cell::new(0),
             show_help: false,
             should_quit: false,
-            message: "".to_string()
+            message: "".to_string(),
         }
     }
 
@@ -78,18 +78,24 @@ impl App {
     }
 
     fn parse_bash_history(content: Vec<u8>) -> Vec<String> {
-        String::from_utf8(content).expect("Can't decode").lines().rev().take(1000).map(String::from).collect()
+        String::from_utf8(content)
+            .expect("Can't decode")
+            .lines()
+            .rev()
+            .take(1000)
+            .map(String::from)
+            .collect()
     }
 
     fn parse_zsh_history(content: Vec<u8>) -> Vec<String> {
         let mut decoded = Vec::new();
         let mut p = 0;
-    
+
         while p < content.len() && content[p] != 0x83 {
             decoded.push(content[p]);
             p += 1;
         }
-    
+
         // Process the string
         while p < content.len() {
             let current_char = content[p];
@@ -103,7 +109,9 @@ impl App {
             }
             p += 1;
         }
-        String::from_utf8(decoded).expect("Can't decode").lines()
+        String::from_utf8(decoded)
+            .expect("Can't decode")
+            .lines()
             .filter_map(|line| line.splitn(2, ';').nth(1)) // Get everything after `;`
             .map(String::from)
             .rev()
@@ -112,7 +120,9 @@ impl App {
     }
 
     fn parse_fish_history(content: Vec<u8>) -> Vec<String> {
-        String::from_utf8(content).expect("Can't decode").lines()
+        String::from_utf8(content)
+            .expect("Can't decode")
+            .lines()
             .filter_map(|line| line.strip_prefix("- cmd: ")) // Extract command part
             .map(String::from)
             .rev()
@@ -143,7 +153,8 @@ impl App {
 
     pub fn push_query(&mut self, c: char) {
         self.search_query.push(c);
-        self.queryed_history = self.queryed_history // The new one must be a subset of the old one.
+        self.queryed_history = self
+            .queryed_history // The new one must be a subset of the old one.
             .clone()
             .into_iter()
             .filter(|cmd| cmd.contains(&self.search_query))
@@ -152,7 +163,8 @@ impl App {
 
     pub fn pop_query(&mut self) {
         self.search_query.pop();
-        self.queryed_history = self.history
+        self.queryed_history = self
+            .history
             .clone()
             .into_iter()
             .filter(|cmd| cmd.contains(&self.search_query))
@@ -167,7 +179,8 @@ impl App {
     pub fn move_selection(&mut self, direction: MoveDirection) {
         if direction == MoveDirection::Up && self.selected > 0 {
             self.selected -= 1;
-        } else if direction == MoveDirection::Down && self.selected < self.queryed_history.len() - 1 {
+        } else if direction == MoveDirection::Down && self.selected < self.queryed_history.len() - 1
+        {
             self.selected += 1;
         }
         if self.selected < self.skipped_items {
@@ -181,9 +194,9 @@ impl App {
         if self.history.is_empty() {
             return;
         }
-    
+
         let selected_cmd = &self.history[self.selected];
-        
+
         // 跨平台剪贴板支持
         #[cfg(target_os = "linux")]
         {
@@ -195,7 +208,7 @@ impl App {
                 .stderr(Stdio::null())
                 .spawn()
                 .is_ok();
-    
+
             if !wayland_success {
                 // 回退到X11的xclip
                 let _ = Command::new("xclip")
@@ -203,25 +216,29 @@ impl App {
                     .stdin(Stdio::piped())
                     .spawn()
                     .and_then(|mut child| {
-                        child.stdin.as_mut().unwrap().write_all(selected_cmd.as_bytes())
+                        child
+                            .stdin
+                            .as_mut()
+                            .unwrap()
+                            .write_all(selected_cmd.as_bytes())
                     });
             }
         }
-    
+
         #[cfg(target_os = "windows")]
         {
             // PowerShell剪贴板支持
             let _ = Command::new("powershell")
                 .args(&[
                     "-Command",
-                    &format!("Set-Clipboard -Value '{}'", selected_cmd.replace("'", "''"))
+                    &format!("Set-Clipboard -Value '{}'", selected_cmd.replace("'", "''")),
                 ])
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .spawn();
         }
-    
+
         #[cfg(target_os = "macos")]
         {
             // macOS使用pbcopy命令
@@ -229,15 +246,18 @@ impl App {
                 .stdin(Stdio::piped())
                 .spawn()
                 .and_then(|mut child| {
-                    child.stdin.as_mut().unwrap().write_all(selected_cmd.as_bytes())
+                    child
+                        .stdin
+                        .as_mut()
+                        .unwrap()
+                        .write_all(selected_cmd.as_bytes())
                 });
         }
-    
+
         // 所有平台的备用方案（使用copypasta库）
         let _ = copypasta::ClipboardContext::new()
             .and_then(|mut ctx| ctx.set_contents(selected_cmd.to_owned()));
     }
-
 
     pub fn get_help_text(&self) -> &'static str {
         HELP_TEXT
