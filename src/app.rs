@@ -1,22 +1,12 @@
 // app.rs 
 use copypasta::ClipboardProvider;
 use serde::{Deserialize, Serialize};
+use std::io::Write;
 use std::process::{Command, Stdio};
 use std::cell::Cell;
 use std::fs;
 use std::path::PathBuf;
 use std::env;
-
-#[cfg(all(
-    unix,
-    not(any(
-        target_os = "macos",
-        target_os = "android",
-        target_os = "ios",
-        target_os = "emscripten"
-    ))
-))]
-use wl_clipboard_rs::copy::{MimeType, Options, Source};
 
 const HELP_TEXT: &str = r#"
 Navigation:
@@ -87,12 +77,33 @@ impl App {
         path
     }
 
-    fn parse_bash_history(content: String) -> Vec<String> {
-        content.lines().rev().take(1000).map(String::from).collect()
+    fn parse_bash_history(content: Vec<u8>) -> Vec<String> {
+        String::from_utf8(content).expect("Can't decode").lines().rev().take(1000).map(String::from).collect()
     }
 
-    fn parse_zsh_history(content: String) -> Vec<String> {
-        content.lines()
+    fn parse_zsh_history(content: Vec<u8>) -> Vec<String> {
+        let mut decoded = Vec::new();
+        let mut p = 0;
+    
+        while p < content.len() && content[p] != 0x83 {
+            decoded.push(content[p]);
+            p += 1;
+        }
+    
+        // Process the string
+        while p < content.len() {
+            let current_char = content[p];
+            if current_char == 0x83 {
+                p += 1;
+                if p < content.len() {
+                    decoded.push(content[p] ^ 32);
+                }
+            } else {
+                decoded.push(current_char);
+            }
+            p += 1;
+        }
+        String::from_utf8(decoded).expect("Can't decode").lines()
             .filter_map(|line| line.splitn(2, ';').nth(1)) // Get everything after `;`
             .map(String::from)
             .rev()
@@ -100,8 +111,8 @@ impl App {
             .collect()
     }
 
-    fn parse_fish_history(content: String) -> Vec<String> {
-        content.lines()
+    fn parse_fish_history(content: Vec<u8>) -> Vec<String> {
+        String::from_utf8(content).expect("Can't decode").lines()
             .filter_map(|line| line.strip_prefix("- cmd: ")) // Extract command part
             .map(String::from)
             .rev()
@@ -113,7 +124,7 @@ impl App {
         let shell = Self::detect_shell();
         let history_path = Self::get_history_path(&shell);
 
-        if let Ok(content) = fs::read_to_string(&history_path) {
+        if let Ok(content) = fs::read(&history_path) {
             if shell.contains("zsh") {
                 Self::parse_zsh_history(content)
             } else if shell.contains("fish") {
