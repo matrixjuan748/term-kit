@@ -190,8 +190,9 @@ impl App {
         }
     }
 
-    pub fn copy_selected(&self) {
+    pub fn copy_selected(&mut self) {
         if self.history.is_empty() {
+            self.message = "没有命令需要复制".to_string();
             return;
         }
 
@@ -199,7 +200,7 @@ impl App {
 
         // 跨平台剪贴板支持
         #[cfg(target_os = "linux")]
-        {
+        let mut success = {
             // Wayland优先使用wl-copy
             let wayland_success = Command::new("wl-copy")
                 .arg(selected_cmd)
@@ -211,7 +212,7 @@ impl App {
 
             if !wayland_success {
                 // 回退到X11的xclip
-                let _ = Command::new("xclip")
+                Command::new("xclip")
                     .args(&["-selection", "clipboard"])
                     .stdin(Stdio::piped())
                     .spawn()
@@ -221,42 +222,50 @@ impl App {
                             .as_mut()
                             .unwrap()
                             .write_all(selected_cmd.as_bytes())
-                    });
+                    })
+                    .is_ok()
+            } else {
+                true
             }
-        }
+        };
 
         #[cfg(target_os = "windows")]
-        {
-            // PowerShell剪贴板支持
-            let _ = Command::new("powershell")
-                .args(&[
-                    "-Command",
-                    &format!("Set-Clipboard -Value '{}'", selected_cmd.replace("'", "''")),
-                ])
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn();
-        }
+        let mut success = Command::new("powershell")
+            .args(&[
+                "-Command",
+                &format!("Set-Clipboard -Value '{}'", selected_cmd.replace("'", "''")),
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .is_ok();
 
         #[cfg(target_os = "macos")]
-        {
-            // macOS使用pbcopy命令
-            let _ = Command::new("pbcopy")
-                .stdin(Stdio::piped())
-                .spawn()
-                .and_then(|mut child| {
-                    child
-                        .stdin
-                        .as_mut()
-                        .unwrap()
-                        .write_all(selected_cmd.as_bytes())
-                });
-        }
+        // macOS使用pbcopy命令
+        let mut success = Command::new("pbcopy")
+            .stdin(Stdio::piped())
+            .spawn()
+            .and_then(|mut child| {
+                child
+                    .stdin
+                    .as_mut()
+                    .unwrap()
+                    .write_all(selected_cmd.as_bytes())
+            })
+            .is_ok();
 
         // 所有平台的备用方案（使用copypasta库）
-        let _ = copypasta::ClipboardContext::new()
-            .and_then(|mut ctx| ctx.set_contents(selected_cmd.to_owned()));
+        if !success {
+            success = copypasta::ClipboardContext::new()
+                .and_then(|mut ctx| ctx.set_contents(selected_cmd.to_owned())).is_ok();
+        }
+
+        if !success {
+            self.message = "复制失败".to_string();
+        } else {
+            self.message = format!("{selected_cmd} 复制成功");
+        }
     }
 
     pub fn get_help_text(&self) -> &'static str {
