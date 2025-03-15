@@ -5,9 +5,16 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.96"
-copypasta = "0.10.1"
 crossterm = "0.28.1"
 directories = "6.0.0"
 ratatui = "0.29.0"
 serde = { version = "1.0.218", features = ["derive"] }
 textwrap = "0.16.1"
+copypasta = { version = "0.10.1", optional = true }  # 添加 optional = true
+
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+wl-clipboard-rs = { version = "0.8.0", optional = true }
+
+[features]
+default = ["copypasta", "wayland"]
+wayland = ["wl-clipboard-rs"]  # 增加 wayland 依赖
