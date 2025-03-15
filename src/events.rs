@@ -9,7 +9,7 @@ pub fn handle_events<B: ratatui::backend::Backend>(
     app: &mut App,
 ) -> Result<()> {
     loop {
-        terminal.draw(|f| draw_ui(f, app))?;  // ✅ 每次事件循环都刷新 UI
+        terminal.draw(|f| draw_ui(f, app))?;  
 
         if app.should_quit {
             break;
@@ -29,24 +29,29 @@ pub fn handle_events<B: ratatui::backend::Backend>(
 
                     KeyCode::Up | KeyCode::Char('k') => app.move_selection(MoveDirection::Up),
                     KeyCode::Down | KeyCode::Char('j') => app.move_selection(MoveDirection::Down),
+
                     KeyCode::Char('/') => {
                         app.search_mode = true;
-                        app.search_query.clear();
+                        app.clear_query();  // 使用clear_query方法
                     }
+
                     KeyCode::Esc => {
                         if app.search_mode {
                             app.search_mode = false;
-                            app.search_query.clear();
+                            app.clear_query();  // 使用clear_query方法
                         } else if app.show_help {
                             app.show_help = false;
                         }
                     }
+
                     KeyCode::Char(c) if app.search_mode => {
-                        app.search_query.push(c);
+                        app.push_query(c);  // 使用push_query方法
                     }
+
                     KeyCode::Backspace if app.search_mode => {
-                        app.search_query.pop();
+                        app.pop_query();  // 使用pop_query方法
                     }
+
                     _ => {}
                 }
             }
