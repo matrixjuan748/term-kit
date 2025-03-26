@@ -34,8 +34,8 @@ pub enum MoveDirection {
 
 #[derive(Serialize, Deserialize)]
 pub struct App {
-    bookmarks: Vec<String>,
-    bookmark_mode: bool,
+    pub bookmarks: Vec<String>,
+    pub bookmark_mode: bool,
     bookmark_path: PathBuf,
     history: Vec<String>,
     queryed_history: Vec<String>,
@@ -52,7 +52,9 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         let history = Self::load_history();
-        Self {
+        
+        // 创建可变实例
+        let mut app = Self {
             bookmarks: Vec::new(),
             bookmark_mode: false,
             bookmark_path: Self::get_bookmark_path(),
@@ -66,8 +68,12 @@ impl App {
             show_help: false,
             should_quit: false,
             message: "".to_string(),
-        };
+        };  // 这里的分号不能少
+        
+        // 在初始化后加载书签
         app.load_bookmarks();
+        
+        // 返回实例
         app
     }
 
@@ -202,18 +208,21 @@ impl App {
     }
 
     pub fn copy_selected(&mut self) {
-        let current_list = self.current_list();
-    
-        // Border Check
-        if current_list.is_empty() || self.selected >= current_list.len() {
+        let is_valid = {
+            let current_list = self.current_list();
+            !current_list.is_empty() && self.selected < current_list.len()
+        };
+
+        if !is_valid {
             self.message = "No command to copy".to_string();
             return;
         }
-
-        let selected_cmd = &current_list[self.selected];
-
-        // Add feedback to copy messages
-        self.message = format!("Copied: {}", selected_cmd);
+    
+        // Obtain the selected command as an owned String
+        let selected_cmd = {
+            let current_list = self.current_list();
+            current_list[self.selected].clone()
+        };
 
         // Multi-platform support
         #[cfg(target_os = "linux")]
