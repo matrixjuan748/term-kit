@@ -229,7 +229,7 @@ impl App {
         {
             // Use wl-copy on linux primarily
             let wayland_success = Command::new("wl-copy")
-                .arg(selected_cmd)
+                .arg(&selected_cmd)
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
