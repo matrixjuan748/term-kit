@@ -13,7 +13,6 @@ Navigation:
   Up/Down Arrow  - Move selection
   j/k            - Move selection up/down
   Enter          - Copy selected command
-  i              - Enter search input mode
   /              - Start search (in input mode)
   h              - Toggle help
   q              - Quit
@@ -21,6 +20,10 @@ Navigation:
 Search Mode:
   Type to filter history
   Press ESC to cancel search
+
+Bookmark Mode:
+  Type [b] to add Bookmarks
+  Type [B] to cancel bookmarks
 "#;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,6 +34,9 @@ pub enum MoveDirection {
 
 #[derive(Serialize, Deserialize)]
 pub struct App {
+    bookmarks: Vec<String>,
+    bookmark_mode: bool,
+    bookmark_path: PathBuf,
     history: Vec<String>,
     queryed_history: Vec<String>,
     pub selected: usize,
@@ -47,6 +53,9 @@ impl App {
     pub fn new() -> Self {
         let history = Self::load_history();
         Self {
+            bookmarks: Vec::new(),
+            bookmark_mode: false,
+            bookmark_path: Self::get_bookmark_path(),
             queryed_history: history.clone(),
             history,
             selected: 0,
@@ -57,7 +66,9 @@ impl App {
             show_help: false,
             should_quit: false,
             message: "".to_string(),
-        }
+        };
+        app.load_bookmarks();
+        app
     }
 
     fn detect_shell() -> String {
@@ -190,17 +201,24 @@ impl App {
         }
     }
 
-    pub fn copy_selected(&self) {
-        if self.history.is_empty() {
+    pub fn copy_selected(&mut self) {
+        let current_list = self.current_list();
+    
+        // Border Check
+        if current_list.is_empty() || self.selected >= current_list.len() {
+            self.message = "No command to copy".to_string();
             return;
         }
 
-        let selected_cmd = &self.history[self.selected];
+        let selected_cmd = &current_list[self.selected];
 
-        // 跨平台剪贴板支持
+        // Add feedback to copy messages
+        self.message = format!("Copied: {}", selected_cmd);
+
+        // Multi-platform support
         #[cfg(target_os = "linux")]
         {
-            // Wayland优先使用wl-copy
+            // Use wl-copy on linux primarily
             let wayland_success = Command::new("wl-copy")
                 .arg(selected_cmd)
                 .stdin(Stdio::null())
@@ -210,7 +228,7 @@ impl App {
                 .is_ok();
 
             if !wayland_success {
-                // 回退到X11的xclip
+                // Back to xclip in X11
                 let _ = Command::new("xclip")
                     .args(&["-selection", "clipboard"])
                     .stdin(Stdio::piped())
@@ -227,7 +245,7 @@ impl App {
 
         #[cfg(target_os = "windows")]
         {
-            // PowerShell剪贴板支持
+            // Support on Powershell
             let _ = Command::new("powershell")
                 .args(&[
                     "-Command",
@@ -241,7 +259,7 @@ impl App {
 
         #[cfg(target_os = "macos")]
         {
-            // macOS使用pbcopy命令
+            // Use pbcopy on macOS
             let _ = Command::new("pbcopy")
                 .stdin(Stdio::piped())
                 .spawn()
@@ -254,7 +272,7 @@ impl App {
                 });
         }
 
-        // 所有平台的备用方案（使用copypasta库）
+        // Alternatives
         let _ = copypasta::ClipboardContext::new()
             .and_then(|mut ctx| ctx.set_contents(selected_cmd.to_owned()));
     }
@@ -269,5 +287,48 @@ impl App {
 
     pub fn get_history(&self) -> Vec<String> {
         self.queryed_history.clone()
+    }
+
+    fn get_bookmark_path() -> PathBuf {
+        directories::BaseDirs::new()
+            .unwrap()
+            .home_dir()
+            .join(".term_kit_bookmarks")
+    }
+
+    fn load_bookmarks(&mut self) {
+        if let Ok(content) = fs::read_to_string(&self.bookmark_path) {
+            self.bookmarks = serde_json::from_str(&content).unwrap_or_default();
+        }
+    }
+
+    fn save_bookmarks(&self) {
+        let _ = fs::write(
+            &self.bookmark_path,
+            serde_json::to_string_pretty(&self.bookmarks).unwrap(),
+        );
+    }
+
+    pub fn toggle_bookmark_mode(&mut self) {
+        self.bookmark_mode = !self.bookmark_mode;
+        self.selected = 0;
+        self.skipped_items = 0;
+    }
+
+    pub fn add_bookmark(&mut self) {
+        if let Some(cmd) = self.current_list().get(self.selected) {
+            if !self.bookmarks.contains(cmd) {
+                self.bookmarks.push(cmd.clone());
+                self.save_bookmarks();
+            }
+        }
+    }
+
+    pub fn current_list(&self) -> &Vec<String> {
+        if self.bookmark_mode {
+            &self.bookmarks
+        } else {
+            &self.queryed_history
+        }
     }
 }

@@ -13,18 +13,18 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),  // 顶部信息框
-            Constraint::Min(1),     // 历史记录列表
-            Constraint::Length(3),  // 底部搜索框
-            Constraint::Length(1),  // 消息提示
+            Constraint::Length(3),  // Top Message Box
+            Constraint::Min(1),     // List of History
+            Constraint::Length(3),  // Bottom Search Box
+            Constraint::Length(1),  // Message Hint
         ])
         .split(f.area());
 
-    // ========== 顶部框 ==========
+    // ========== Top Box ==========
     let header = Paragraph::new(Line::from(vec![
         Span::styled("History Finder ", Style::default().fg(Color::Yellow)),
         Span::styled("v0.1", Style::default().fg(Color::LightBlue)),
-        Span::raw(" | [↑/↓] 选择 | [Enter] 复制 | [/] 搜索 | [q] 退出 | [h] 帮助"),
+        Span::raw(" | [↑/↓] Choose | [Enter] Enter | [/] Search | [q] Quit | [h] Help"),
     ]))
     .block(Block::default().title(" Info ").borders(Borders::ALL))
     .alignment(Alignment::Center);
@@ -53,9 +53,9 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
     f.render_widget(list_block, layout[1]);
     f.render_widget(Paragraph::new(items), list_area);
 
-    // 底部搜索框
+    // Top Search Box
     let search_text = if app.get_query().is_empty() && !app.search_mode {
-        "输入 '/' 开始搜索...".into()
+        "Type '/' to Search...".into()
     } else {
         format!("/{}", app.get_query())
     };
@@ -66,7 +66,7 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
 
     f.render_widget(search_bar, layout[2]);
 
-    // 绘制帮助窗口
+    // Draw Help Window
     if app.show_help {
         let help_block = Block::default()
             .title(" Help (ESC to close) ")
@@ -80,16 +80,15 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
             .alignment(ratatui::layout::Alignment::Left)
             .wrap(Wrap { trim: true });
 
-        // 将帮助框放置在屏幕中央
+        // Place Help windows on the Center of the Screen
         let area = centered_rect(60, 30, f.area());
         f.render_widget(help_paragraph, area);
     }
 
-    // 绘制消息框
+    // Draw Message Box
     f.render_widget(Paragraph::new(Text::raw(app.message.clone())), layout[3]);
 }
 
-// 居中区域的函数，确保帮助框不会与其他部分重叠
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
     let vertical = Layout::default()
         .direction(Direction::Vertical)
