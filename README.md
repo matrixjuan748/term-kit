@@ -24,7 +24,7 @@
 
 ### 安装步骤
 ```bash
-$ git clone https://github.com/yourusername/term-kit.git
+$ git clone https://github.com/WilsonHuang080705/term-kit.git
 $ cd term-kit
 $ cargo run --bin main
 ```
@@ -63,6 +63,8 @@ $ cargo run --bin main
 - [copypasta](https://crates.io/crates/copypasta) - 剪贴板操作
 - [serde](https://crates.io/crates/serde) - 序列化
 - [directories](https://crates.io/crates/directories) - 获取历史文件路径
+- [textwrap](https://crates.io/crates/textwrap/) - 文本包裹
+- [wl-clipboard-rs](https://crates.io/crates/wl-clipboard-rs) - 跨平台剪贴板操作
 
 ## 🤝 贡献
 欢迎提交Issue和PR！请遵循以下步骤：
