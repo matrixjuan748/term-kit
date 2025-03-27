@@ -5,8 +5,10 @@ use std::cell::Cell;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
+
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::process::{Command, Stdio};
+
 #[cfg(target_os = "windows")]
 use std::process::Command;
 
@@ -212,7 +214,7 @@ impl App {
             let current_list = self.current_list();
             !current_list.is_empty() && self.selected < current_list.len()
         };
-
+    
         if !is_valid {
             self.message = "No command to copy".to_string();
             return;
@@ -226,19 +228,21 @@ impl App {
         #[cfg(target_os = "linux")]
         // Linux fallback with conditional write
         {
+            // Detect display server
+
             let wayland = env::var("WAYLAND_DISPLAY").is_ok();
             let x11 = env::var("DISPLAY").is_ok();
             
             if wayland {
+                // Wayland primary method
                 let _ = Command::new("wl-copy")
                     .arg(&selected_cmd)
                     .spawn()
                     .map_err(|e| eprintln!("Wayland error: {}", e));
             } else if x11 {
-                
+                // X11 fallback with conditional write
                 #[cfg(any(target_os = "linux", target_os = "macos"))]
                 {
-                    use std::io::Write;
                     let _ = Command::new("xclip")
                         .args(&["-selection", "clipboard"])
                         .stdin(Stdio::piped())
@@ -252,13 +256,11 @@ impl App {
                 }
             }
         }
-
         #[cfg(target_os = "macos")]
         {
             // macOS specific write operation
             #[cfg(any(target_os = "linux", target_os = "macos"))]
             {
-                use std::io::Write;
                 let _ = Command::new("pbcopy")
                     .stdin(Stdio::piped())
                     .spawn()
@@ -270,7 +272,6 @@ impl App {
                     });
             }
         }
-
         #[cfg(target_os = "windows")]
         // Windows PowerShell implementation (no write needed)
         {
@@ -281,8 +282,7 @@ impl App {
                 ])
                 .spawn();
         }
-
-        // Universal Fallback
+        // Universal fallback
         let _ = copypasta::ClipboardContext::new()
             .and_then(|mut ctx| ctx.set_contents(selected_cmd.to_owned()));
     }
