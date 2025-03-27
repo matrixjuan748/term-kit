@@ -52,8 +52,6 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         let history = Self::load_history();
-        
-        // 创建可变实例
         let mut app = Self {
             bookmarks: Vec::new(),
             bookmark_mode: false,
@@ -68,12 +66,11 @@ impl App {
             show_help: false,
             should_quit: false,
             message: "".to_string(),
-        };  // 这里的分号不能少
+        };
         
-        // 在初始化后加载书签
+        // Load Bookmarks initially
         app.load_bookmarks();
-        
-        // 返回实例
+        // Back Instance
         app
     }
 

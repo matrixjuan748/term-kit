@@ -9,7 +9,7 @@ use ratatui::{
 use crate::app::App;
 
 pub fn draw_ui(f: &mut Frame, app: &mut App) {
-    // 计算整体布局
+    // Calculate Overall Layout
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -31,7 +31,7 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
 
     f.render_widget(header, layout[0]);
 
-    // 绘制主列表
+    // Draw Main List
     let list_block = Block::default()
         .borders(Borders::ALL)
         .title(" Command History ");
