@@ -92,77 +92,7 @@ impl App {
 
         path
     }
-
-    fn parse_bash_history(content: Vec<u8>) -> Vec<String> {
-        String::from_utf8(content)
-            .expect("Can't decode")
-            .lines()
-            .rev()
-            .take(1000)
-            .map(String::from)
-            .collect()
-    }
-
-    fn parse_zsh_history(content: Vec<u8>) -> Vec<String> {
-        let mut decoded = Vec::new();
-        let mut p = 0;
-
-        while p < content.len() && content[p] != 0x83 {
-            decoded.push(content[p]);
-            p += 1;
-        }
-
-        // Process the string
-        while p < content.len() {
-            let current_char = content[p];
-            if current_char == 0x83 {
-                p += 1;
-                if p < content.len() {
-                    decoded.push(content[p] ^ 32);
-                }
-            } else {
-                decoded.push(current_char);
-            }
-            p += 1;
-        }
-        String::from_utf8(decoded)
-            .expect("Can't decode")
-            .lines()
-            .filter_map(|line| line.splitn(2, ';').nth(1)) // Get everything after `;`
-            .map(String::from)
-            .rev()
-            .take(1000)
-            .collect()
-    }
-
-    fn parse_fish_history(content: Vec<u8>) -> Vec<String> {
-        String::from_utf8(content)
-            .expect("Can't decode")
-            .lines()
-            .filter_map(|line| line.strip_prefix("- cmd: ")) // Extract command part
-            .map(String::from)
-            .rev()
-            .take(1000)
-            .collect()
-    }
-
-    fn detect_shell() -> String {
-        env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string()) // Default to bash
-    }
-
-    fn get_history_path(shell: &str) -> PathBuf {
-        let mut path = PathBuf::new();
-        path.push(directories::BaseDirs::new().unwrap().home_dir());
-
-        match shell {
-            s if s.contains("zsh") => path.push(".zsh_history"),
-            s if s.contains("fish") => path.push(".local/share/fish/fish_history"),
-            _ => path.push(".bash_history"),
-        }
-
-        path
-    }
-
+  
     fn parse_bash_history(content: Vec<u8>) -> Vec<String> {
         String::from_utf8(content)
             .expect("Can't decode")
@@ -296,34 +226,34 @@ impl App {
         // Multi-platform support
         #[cfg(target_os = "linux")]
         {
-            let wayland = env::var("WAYLAND_DISPLAY").is_ok();
-            let x11 = env::var("DISPLAY").is_ok();
-
-            // Use wl-copy on linux primarily
-            let wayland_success = Command::new("wl-copy")
-                .arg(&selected_cmd)
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-                .is_ok();
-
-            if !wayland_success {
-                // Back to xclip in X11
+            // Detect display server using environment variables
+            let _wayland = env::var("WAYLAND_DISPLAY").is_ok();
+            let _x11 = env::var("DISPLAY").is_ok();
+            
+            if wayland {
+                // Primary method for Wayland compositors
+                let _ = Command::new("wl-copy")
+                    .arg(&selected_cmd)
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .map_err(|e| eprintln!("Wayland (wl-copy) failed: {}", e));
+            } else if x11 {
+                // Fallback for X11 servers
                 let _ = Command::new("xclip")
                     .args(&["-selection", "clipboard"])
                     .stdin(Stdio::piped())
                     .spawn()
                     .and_then(|mut child| {
-                        child
-                            .stdin
+                        child.stdin
                             .as_mut()
                             .unwrap()
                             .write_all(selected_cmd.as_bytes())
-                    });
+                    })
+                    .map_err(|e| eprintln!("X11 (xclip) failed: {}", e));
             }
         }
-
         #[cfg(target_os = "windows")]
         {
             // Support on Powershell
@@ -353,10 +283,12 @@ impl App {
                 });
         }
 
-        // Alternatives
-        let _ = copypasta::ClipboardContext::new()
-            .and_then(|mut ctx| ctx.set_contents(selected_cmd.to_owned()));
+        // Final fallback to clipboard crate if both methods fail
+    let _ = copypasta::ClipboardContext::new()
+        .and_then(|mut ctx| ctx.set_contents(selected_cmd.to_owned()))
+        .map_err(|e| eprintln!("Clipboard crate fallback failed: {}", e));
     }
+    
 
     pub fn get_help_text(&self) -> &'static str {
         HELP_TEXT
