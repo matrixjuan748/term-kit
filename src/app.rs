@@ -44,7 +44,7 @@ pub struct App {
     queryed_history: Vec<String>,
     pub selected: usize,
     pub search_mode: bool,
-    search_query: String,
+    pub search_query: String,
     pub skipped_items: usize,
     pub size: Cell<usize>,
     pub show_help: bool,
@@ -52,7 +52,6 @@ pub struct App {
     pub message: String,
     pub bookmarks: Vec<String>,
     pub bookmark_mode: bool,
-
 }
 
 impl App {
@@ -96,7 +95,7 @@ impl App {
 
         path
     }
-  
+
     fn parse_bash_history(content: Vec<u8>) -> Vec<String> {
         String::from_utf8(content)
             .expect("Can't decode")
@@ -220,15 +219,17 @@ impl App {
             self.message = "No command to copy".to_string();
             return;
         }
-    
+
         let selected_cmd = {
             let current_list = self.current_list();
             current_list[self.selected].clone()
         };
-    
+
         #[cfg(target_os = "linux")]
+        // Linux fallback with conditional write
         {
             // Detect display server
+
             let wayland = env::var("WAYLAND_DISPLAY").is_ok();
             let x11 = env::var("DISPLAY").is_ok();
             
@@ -255,7 +256,6 @@ impl App {
                 }
             }
         }
-    
         #[cfg(target_os = "macos")]
         {
             // macOS specific write operation
@@ -272,10 +272,9 @@ impl App {
                     });
             }
         }
-    
         #[cfg(target_os = "windows")]
+        // Windows PowerShell implementation (no write needed)
         {
-            // Windows PowerShell implementation (no write needed)
             let _ = Command::new("powershell")
                 .args(&[
                     "-Command",
@@ -283,7 +282,6 @@ impl App {
                 ])
                 .spawn();
         }
-    
         // Universal fallback
         let _ = copypasta::ClipboardContext::new()
             .and_then(|mut ctx| ctx.set_contents(selected_cmd.to_owned()));
