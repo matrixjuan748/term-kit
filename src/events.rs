@@ -17,6 +17,7 @@ pub fn handle_events<B: ratatui::backend::Backend>(
 
         if event::poll(std::time::Duration::from_millis(100))? {
             if let event::Event::Key(KeyEvent { code, .. }) = event::read()? {
+                app.message = "".to_string();
                 match code {
                     KeyCode::Char('h') => app.show_help = true,
                     KeyCode::Char('q') => {
