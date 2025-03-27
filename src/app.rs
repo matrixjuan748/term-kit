@@ -40,7 +40,7 @@ pub struct App {
     queryed_history: Vec<String>,
     pub selected: usize,
     pub search_mode: bool,
-    search_query: String,
+    pub search_query: String,
     pub skipped_items: usize,
     pub size: Cell<usize>,
     pub show_help: bool,
@@ -48,7 +48,6 @@ pub struct App {
     pub message: String,
     pub bookmarks: Vec<String>,
     pub bookmark_mode: bool,
-
 }
 
 impl App {
@@ -92,7 +91,7 @@ impl App {
 
         path
     }
-  
+
     fn parse_bash_history(content: Vec<u8>) -> Vec<String> {
         String::from_utf8(content)
             .expect("Can't decode")
@@ -222,13 +221,12 @@ impl App {
             let current_list = self.current_list();
             current_list[self.selected].clone()
         };
-      
-        // Multi-platform support
+
         #[cfg(target_os = "linux")]
         {
             // Detect display server using environment variables
-            let _wayland = env::var("WAYLAND_DISPLAY").is_ok();
-            let _x11 = env::var("DISPLAY").is_ok();
+            let wayland = env::var("WAYLAND_DISPLAY").is_ok();
+            let x11 = env::var("DISPLAY").is_ok();
             
             if _wayland {
                 // Primary method for Wayland compositors
