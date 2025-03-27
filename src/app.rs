@@ -225,8 +225,8 @@ impl App {
         #[cfg(target_os = "linux")]
         {
             // Detect display server using environment variables
-            let wayland = env::var("WAYLAND_DISPLAY").is_ok();
-            let x11 = env::var("DISPLAY").is_ok();
+            let _wayland = env::var("WAYLAND_DISPLAY").is_ok();
+            let _x11 = env::var("DISPLAY").is_ok();
             
             if wayland {
                 // Primary method for Wayland compositors
