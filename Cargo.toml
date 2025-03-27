@@ -19,3 +19,4 @@ wl-clipboard-rs = { version = "0.9.2", optional = true }
 [features]
 default = ["copypasta", "wayland"]
 wayland = ["wl-clipboard-rs"]  # 增加 wayland 依赖
+
