@@ -96,7 +96,6 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
         format!("/{}", app.get_query())
     } else {
         "Press / to start searching".into()
-
     };
 
     let search_bar = Paragraph::new(Text::raw(search_text))
@@ -155,8 +154,6 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
         let help_area = centered_rect(60, 30, f.area());
         f.render_widget(help_para, help_area);
     }
-
-    f.render_widget(Paragraph::new(Text::raw(app.message.clone())), layout[3]);
 }
 
 /// Helper function to create centered rectangular area
