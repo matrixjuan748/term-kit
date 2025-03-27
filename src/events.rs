@@ -9,7 +9,7 @@ pub fn handle_events<B: ratatui::backend::Backend>(
     app: &mut App,
 ) -> Result<()> {
     loop {
-        terminal.draw(|f| draw_ui(f, app))?;  // ✅ 每次事件循环都刷新 UI
+        terminal.draw(|f| draw_ui(f, app))?;  
 
         if app.should_quit {
             break;
@@ -28,23 +28,46 @@ pub fn handle_events<B: ratatui::backend::Backend>(
                         app.copy_selected();
                     }
 
+                    KeyCode::Char('b') if !app.search_mode => {
+                        app.add_bookmark();
+                        app.message = "Bookmark added!".to_string();
+                    }
+                    KeyCode::Char('B') if !app.search_mode => {
+                        app.toggle_bookmark_mode();
+                        app.message = if app.bookmark_mode { 
+                            "Switched to bookmark mode".to_string()
+                        } else {
+                            "Switched to history mode".to_string()
+                        };
+                    }
+
                     KeyCode::Up | KeyCode::Char('k') => app.move_selection(MoveDirection::Up),
                     KeyCode::Down | KeyCode::Char('j') => app.move_selection(MoveDirection::Down),
+
                     KeyCode::Char('/') => {
                         app.search_mode = true;
-                        app.clear_query();
+                        app.clear_query();  // Use method clear_query
                     }
+
                     KeyCode::Esc => {
-                        app.search_mode = false;
-                        app.show_help = false;
-                        app.clear_query();
+                        if app.search_mode {
+                            app.search_mode = false;
+                            app.clear_query();  // Use method clear_query
+                        } else if app.show_help {
+                            app.show_help = false;
+                        } else if app.bookmark_mode {
+                            app.toggle_bookmark_mode(); // Exit Bookmark mode
+                        }
                     }
+
                     KeyCode::Char(c) if app.search_mode => {
-                        app.push_query(c);
+                        app.push_query(c);  // Use method push_query
                     }
+
                     KeyCode::Backspace if app.search_mode => {
-                        app.pop_query();
+                        app.pop_query();  // Use method pop_query
                     }
+
                     _ => {}
                 }
             }
