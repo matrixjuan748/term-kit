@@ -295,10 +295,6 @@ impl App {
         self.size.set(size);
     }
 
-    pub fn get_history(&self) -> Vec<String> {
-        self.queryed_history.clone()
-    }
-
     fn get_bookmark_path() -> PathBuf {
         directories::BaseDirs::new()
             .unwrap()
