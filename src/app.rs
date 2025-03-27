@@ -222,37 +222,36 @@ impl App {
             current_list[self.selected].clone()
         };
 
-        // Multi-platform support
         #[cfg(target_os = "linux")]
         {
+            // Detect display server using environment variables
             let wayland = env::var("WAYLAND_DISPLAY").is_ok();
             let x11 = env::var("DISPLAY").is_ok();
-
-            // Use wl-copy on linux primarily
-            let wayland_success = Command::new("wl-copy")
-                .arg(&selected_cmd)
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-                .is_ok();
-
-            if !wayland_success {
-                // Back to xclip in X11
+            
+            if wayland {
+                // Primary method for Wayland compositors
+                let _ = Command::new("wl-copy")
+                    .arg(&selected_cmd)
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .map_err(|e| eprintln!("Wayland (wl-copy) failed: {}", e));
+            } else if x11 {
+                // Fallback for X11 servers
                 let _ = Command::new("xclip")
                     .args(&["-selection", "clipboard"])
                     .stdin(Stdio::piped())
                     .spawn()
                     .and_then(|mut child| {
-                        child
-                            .stdin
+                        child.stdin
                             .as_mut()
                             .unwrap()
                             .write_all(selected_cmd.as_bytes())
-                    });
+                    })
+                    .map_err(|e| eprintln!("X11 (xclip) failed: {}", e));
             }
         }
-
         #[cfg(target_os = "windows")]
         {
             // Support on Powershell
@@ -282,10 +281,12 @@ impl App {
                 });
         }
 
-        // Alternatives
-        let _ = copypasta::ClipboardContext::new()
-            .and_then(|mut ctx| ctx.set_contents(selected_cmd.to_owned()));
+        // Final fallback to clipboard crate if both methods fail
+    let _ = copypasta::ClipboardContext::new()
+        .and_then(|mut ctx| ctx.set_contents(selected_cmd.to_owned()))
+        .map_err(|e| eprintln!("Clipboard crate fallback failed: {}", e));
     }
+    
 
     pub fn get_help_text(&self) -> &'static str {
         HELP_TEXT
