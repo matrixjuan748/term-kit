@@ -230,7 +230,7 @@ impl App {
             let _wayland = env::var("WAYLAND_DISPLAY").is_ok();
             let _x11 = env::var("DISPLAY").is_ok();
             
-            if wayland {
+            if _wayland {
                 // Primary method for Wayland compositors
                 let _ = Command::new("wl-copy")
                     .arg(&selected_cmd)
@@ -239,7 +239,7 @@ impl App {
                     .stderr(Stdio::null())
                     .spawn()
                     .map_err(|e| eprintln!("Wayland (wl-copy) failed: {}", e));
-            } else if x11 {
+            } else if _x11 {
                 // Fallback for X11 servers
                 let _ = Command::new("xclip")
                     .args(&["-selection", "clipboard"])
