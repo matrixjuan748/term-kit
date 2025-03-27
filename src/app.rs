@@ -22,8 +22,9 @@ Search Mode:
   Press ESC to cancel search
 
 Bookmark Mode:
-  Type [b] to add Bookmarks
-  Type [B] to cancel bookmarks
+  b - Add current command to bookmarks
+  B - Toggle bookmark/history mode
+  d - Delete selected bookmark
 "#;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,8 +35,6 @@ pub enum MoveDirection {
 
 #[derive(Serialize, Deserialize)]
 pub struct App {
-    pub bookmarks: Vec<String>,
-    pub bookmark_mode: bool,
     bookmark_path: PathBuf,
     history: Vec<String>,
     queryed_history: Vec<String>,
@@ -47,6 +46,8 @@ pub struct App {
     pub show_help: bool,
     pub should_quit: bool,
     pub message: String,
+    pub bookmarks: Vec<String>,
+    pub bookmark_mode: bool,
 }
 
 impl App {
@@ -168,11 +169,11 @@ impl App {
     pub fn push_query(&mut self, c: char) {
         self.search_query.push(c);
         self.queryed_history = self
-            .queryed_history // The new one must be a subset of the old one.
-            .clone()
-            .into_iter()
+            .history  
+            .iter()
             .filter(|cmd| cmd.contains(&self.search_query))
-            .collect()
+            .cloned()
+            .collect();
     }
 
     pub fn pop_query(&mut self) {
@@ -224,6 +225,9 @@ impl App {
         // Multi-platform support
         #[cfg(target_os = "linux")]
         {
+            let wayland = env::var("WAYLAND_DISPLAY").is_ok();
+            let x11 = env::var("DISPLAY").is_ok();
+
             // Use wl-copy on linux primarily
             let wayland_success = Command::new("wl-copy")
                 .arg(&selected_cmd)
