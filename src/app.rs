@@ -4,9 +4,11 @@ use serde::{Deserialize, Serialize};
 use std::cell::Cell;
 use std::env;
 use std::fs;
-use std::io::Write;
 use std::path::PathBuf;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::process::{Command, Stdio};
+#[cfg(target_os = "windows")]
+use std::process::Command;
 
 const HELP_TEXT: &str = r#"
 Navigation:
@@ -215,32 +217,49 @@ impl App {
             self.message = "No command to copy".to_string();
             return;
         }
-    
-        // Obtain the selected command as an owned String
+
         let selected_cmd = {
             let current_list = self.current_list();
             current_list[self.selected].clone()
         };
 
         #[cfg(target_os = "linux")]
+        // Linux fallback with conditional write
         {
-            // Detect display server using environment variables
-            let _wayland = env::var("WAYLAND_DISPLAY").is_ok();
-            let _x11 = env::var("DISPLAY").is_ok();
+            let wayland = env::var("WAYLAND_DISPLAY").is_ok();
+            let x11 = env::var("DISPLAY").is_ok();
             
-            if _wayland {
-                // Primary method for Wayland compositors
+            if wayland {
                 let _ = Command::new("wl-copy")
                     .arg(&selected_cmd)
-                    .stdin(Stdio::null())
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
                     .spawn()
-                    .map_err(|e| eprintln!("Wayland (wl-copy) failed: {}", e));
-            } else if _x11 {
-                // Fallback for X11 servers
-                let _ = Command::new("xclip")
-                    .args(&["-selection", "clipboard"])
+                    .map_err(|e| eprintln!("Wayland error: {}", e));
+            } else if x11 {
+                
+                #[cfg(any(target_os = "linux", target_os = "macos"))]
+                {
+                    use std::io::Write;
+                    let _ = Command::new("xclip")
+                        .args(&["-selection", "clipboard"])
+                        .stdin(Stdio::piped())
+                        .spawn()
+                        .and_then(|mut child| {
+                            child.stdin
+                                .as_mut()
+                                .unwrap()
+                                .write_all(selected_cmd.as_bytes())
+                        });
+                }
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            // macOS specific write operation
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
+            {
+                use std::io::Write;
+                let _ = Command::new("pbcopy")
                     .stdin(Stdio::piped())
                     .spawn()
                     .and_then(|mut child| {
@@ -248,43 +267,24 @@ impl App {
                             .as_mut()
                             .unwrap()
                             .write_all(selected_cmd.as_bytes())
-                    })
-                    .map_err(|e| eprintln!("X11 (xclip) failed: {}", e));
+                    });
             }
         }
+
         #[cfg(target_os = "windows")]
+        // Windows PowerShell implementation (no write needed)
         {
-            // Support on Powershell
             let _ = Command::new("powershell")
                 .args(&[
                     "-Command",
                     &format!("Set-Clipboard -Value '{}'", selected_cmd.replace("'", "''")),
                 ])
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
                 .spawn();
         }
 
-        #[cfg(target_os = "macos")]
-        {
-            // Use pbcopy on macOS
-            let _ = Command::new("pbcopy")
-                .stdin(Stdio::piped())
-                .spawn()
-                .and_then(|mut child| {
-                    child
-                        .stdin
-                        .as_mut()
-                        .unwrap()
-                        .write_all(selected_cmd.as_bytes())
-                });
-        }
-
-        // Final fallback to clipboard crate if both methods fail
-    let _ = copypasta::ClipboardContext::new()
-        .and_then(|mut ctx| ctx.set_contents(selected_cmd.to_owned()))
-        .map_err(|e| eprintln!("Clipboard crate fallback failed: {}", e));
+        // Universal Fallback
+        let _ = copypasta::ClipboardContext::new()
+            .and_then(|mut ctx| ctx.set_contents(selected_cmd.to_owned()));
     }
     
 
