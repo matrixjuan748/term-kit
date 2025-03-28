@@ -1,8 +1,6 @@
 // app.rs
 use copypasta::ClipboardProvider;
-use serde::{Deserialize, Serialize};
 use std::cell::Cell;
-use std::env;
 use std::fs;
 use std::path::PathBuf;
 
@@ -37,11 +35,20 @@ pub enum MoveDirection {
     Down,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum Shell {
+    PowerShell,
+    Zsh,
+    Bash,
+    Fish,
+    Unknown(String),
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct App {
     bookmark_path: PathBuf,
     history: Vec<String>,
-    queryed_history: Vec<String>,
+    queried_history: Vec<String>,
     pub selected: usize,
     pub search_mode: bool,
     pub search_query: String,
@@ -52,70 +59,92 @@ pub struct App {
     pub message: String,
     pub bookmarks: Vec<String>,
     pub bookmark_mode: bool,
+    current_shell: Shell,
 }
 
-impl App {
-    pub fn new() -> Self {
-        let history = Self::load_history();
-        let mut app = Self {
-            bookmarks: Vec::new(),
-            bookmark_mode: false,
-            bookmark_path: Self::get_bookmark_path(),
-            queryed_history: history.clone(),
-            history,
-            selected: 0,
-            search_mode: false,
-            search_query: String::new(),
-            skipped_items: 0,
-            size: Cell::new(0),
-            show_help: false,
-            should_quit: false,
-            message: "".to_string(),
-        };
-        
-        // Load Bookmarks initially
-        app.load_bookmarks();
-        // Back Instance
-        app
-    }
-
-    fn detect_shell() -> String {
-        env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string()) // Default to bash
-    }
-
-    fn get_history_path(shell: &str) -> PathBuf {
-        let mut path = PathBuf::new();
-        path.push(directories::BaseDirs::new().unwrap().home_dir());
-
-        match shell {
-            s if s.contains("zsh") => path.push(".zsh_history"),
-            s if s.contains("fish") => path.push(".local/share/fish/fish_history"),
-            _ => path.push(".bash_history"),
+impl Shell {
+    /// Detect the current shell based on platform and environment
+    pub fn detect() -> Self {
+        #[cfg(target_os = "windows")]
+        {
+            // Windows defaults to PowerShell
+            Shell::PowerShell
         }
 
+        #[cfg(not(target_os = "windows"))]
+        {
+            let shell_path = env::var("SHELL").unwrap_or_else(|_| "/bin/bash".into());
+            let shell_name = shell_path.to_lowercase();
+
+            if shell_name.contains("pwsh") || shell_name.contains("powershell") {
+                Shell::PowerShell
+            } else if shell_name.contains("zsh") {
+                Shell::Zsh
+            } else if shell_name.contains("fish") {
+                Shell::Fish
+            } else if shell_name.contains("bash") {
+                Shell::Bash
+            } else {
+                Shell::Unknown(shell_path)
+            }
+        }
+    }
+
+    // Get history file path for the shell
+    pub fn history_path(&self) -> PathBuf {
+        let base_dirs = directories::BaseDirs::new().unwrap();
+        let mut path = base_dirs.home_dir().to_path_buf();
+
+        match self {
+            Shell::PowerShell => {
+                #[cfg(target_os = "windows")]
+                path.push("AppData\\Roaming\\Microsoft\\Windows\\PowerShell\\PSReadLine\\ConsoleHost_history.txt");
+                
+                #[cfg(not(target_os = "windows"))]
+                path.push(".local/share/powershell/PSReadLine/ConsoleHost_history.txt");
+            }
+            Shell::Zsh => path.push(".zsh_history"),
+            Shell::Bash => path.push(".bash_history"),
+            Shell::Fish => path.push(".local/share/fish/fish_history"),
+            Shell::Unknown(_) => path.push(".bash_history"), // Fallback
+        }
         path
     }
 
-    fn parse_bash_history(content: Vec<u8>) -> Vec<String> {
+    /// Parse shell-specific history format
+    pub fn parse_history(&self, content: Vec<u8>) -> Vec<String> {
+        match self {
+            Shell::PowerShell => Self::parse_powershell(content),
+            Shell::Zsh => Self::parse_zsh(content),
+            Shell::Bash => Self::parse_bash(content),
+            Shell::Fish => Self::parse_fish(content),
+            Shell::Unknown(_) => Self::parse_bash(content), // Fallback to bash parsing
+        }
+    }
+
+    // -- History Parsers -- //
+
+    fn parse_powershell(content: Vec<u8>) -> Vec<String> {
         String::from_utf8(content)
-            .expect("Can't decode")
+            .expect("Failed to decode PowerShell history")
             .lines()
             .rev()
+            .map(|line| line.trim().to_string())
+            .filter(|line| !line.is_empty())
             .take(1000)
-            .map(String::from)
             .collect()
     }
 
-    fn parse_zsh_history(content: Vec<u8>) -> Vec<String> {
+    fn parse_zsh(content: Vec<u8>) -> Vec<String> {
         let mut decoded = Vec::new();
         let mut p = 0;
 
+        // Handle zsh's metacharacter encoding
         while p < content.len() && content[p] != 0x83 {
             decoded.push(content[p]);
             p += 1;
         }
 
-        // Process the string
         while p < content.len() {
             let current_char = content[p];
             if current_char == 0x83 {
@@ -128,80 +157,111 @@ impl App {
             }
             p += 1;
         }
+
         String::from_utf8(decoded)
-            .expect("Can't decode")
+            .expect("Failed to decode Zsh history")
             .lines()
-            .filter_map(|line| line.splitn(2, ';').nth(1)) // Get everything after `;`
+            .filter_map(|line| line.splitn(2, ';').nth(1))
             .map(String::from)
             .rev()
             .take(1000)
             .collect()
     }
 
-    fn parse_fish_history(content: Vec<u8>) -> Vec<String> {
+    fn parse_bash(content: Vec<u8>) -> Vec<String> {
         String::from_utf8(content)
-            .expect("Can't decode")
+            .expect("Failed to decode Bash history")
             .lines()
-            .filter_map(|line| line.strip_prefix("- cmd: ")) // Extract command part
+            .rev()
+            .take(1000)
+            .map(String::from)
+            .collect()
+    }
+
+    fn parse_fish(content: Vec<u8>) -> Vec<String> {
+        String::from_utf8(content)
+            .expect("Failed to decode Fish history")
+            .lines()
+            .filter_map(|line| line.strip_prefix("- cmd: "))
             .map(String::from)
             .rev()
             .take(1000)
             .collect()
     }
+}
 
-    fn load_history() -> Vec<String> {
-        let shell = Self::detect_shell();
-        let history_path = Self::get_history_path(&shell);
+impl App {
+    pub fn new() -> Self {
+        let current_shell = Shell::detect();
+        let history = Self::load_history(&current_shell);
 
-        if let Ok(content) = fs::read(&history_path) {
-            if shell.contains("zsh") {
-                Self::parse_zsh_history(content)
-            } else if shell.contains("fish") {
-                Self::parse_fish_history(content)
-            } else {
-                Self::parse_bash_history(content)
-            }
-        } else {
-            vec!["No history found".into()]
-        }
+        let mut app = Self {
+            bookmarks: Vec::new(),
+            bookmark_mode: false,
+            bookmark_path: Self::get_bookmark_path(),
+            queried_history: history.clone(),
+            history,
+            selected: 0,
+            search_mode: false,
+            search_query: String::new(),
+            skipped_items: 0,
+            size: Cell::new(0),
+            show_help: false,
+            should_quit: false,
+            message: String::new(),
+            current_shell,
+        };
+
+        app.load_bookmarks();
+        app
     }
 
-    pub fn get_query(&self) -> String {
-        self.search_query.clone()
+    // -- History -- //
+    fn load_history(shell: &Shell) -> Vec<String> {
+        let history_path = shell.history_path();
+
+        fs::read(&history_path)
+            .map(|content| shell.parse_history(content))
+            .unwrap_or_else(|_| vec!["No history found".into()])
     }
 
+    pub fn search_query(&self) -> &str {
+        &self.search_query
+    }
+    
     pub fn push_query(&mut self, c: char) {
         self.search_query.push(c);
-        self.queryed_history = self
-            .history  
-            .iter()
-            .filter(|cmd| cmd.contains(&self.search_query))
-            .cloned()
-            .collect();
+        self.update_queried_history();
     }
 
     pub fn pop_query(&mut self) {
         self.search_query.pop();
-        self.queryed_history = self
-            .history
-            .clone()
-            .into_iter()
-            .filter(|cmd| cmd.contains(&self.search_query))
-            .collect()
+        self.update_queried_history();
     }
 
     pub fn clear_query(&mut self) {
         self.search_query.clear();
-        self.queryed_history = self.history.clone();
+        self.queried_history = self.history.clone();
+    }
+
+    fn update_queried_history(&mut self) {
+        self.queried_history = self.history
+            .iter()
+            .filter(|cmd| cmd.contains(&self.search_query))
+            .cloned()
+            .collect();
+        self.selected = self.selected.min(self.queried_history.len().saturating_sub(1));
     }
 
     pub fn move_selection(&mut self, direction: MoveDirection) {
-        if direction == MoveDirection::Up && self.selected > 0 {
-            self.selected -= 1;
-        } else if direction == MoveDirection::Down && self.selected < self.queryed_history.len() - 1
-        {
-            self.selected += 1;
+        let max_index = self.current_list().len().saturating_sub(1);
+
+        match direction {
+            MoveDirection::Up if self.selected > 0 => self.selected -= 1,
+            MoveDirection::Down if self.selected < max_index => self.selected += 1,
+            _ => (),
         }
+
         if self.selected < self.skipped_items {
             self.skipped_items = self.selected;
         } else if self.selected >= self.skipped_items + self.size.get() {
@@ -209,7 +269,11 @@ impl App {
         }
     }
 
+    // -- Selection -- //
     pub fn copy_selected(&mut self) {
+        let Some(selected_cmd) = self.current_list().get(self.selected) else {
+            self.message = "No command to copy".into();
+
         let is_valid = {
             let current_list = self.current_list();
             !current_list.is_empty() && self.selected < current_list.len()
@@ -218,14 +282,18 @@ impl App {
         if !is_valid {
             self.message = "No command to copy".to_string();
             return;
-        }
-
-        let selected_cmd = {
-            let current_list = self.current_list();
-            current_list[self.selected].clone()
         };
 
+        // Platform-specific clipboard handling
         #[cfg(target_os = "linux")]
+        self.handle_linux_clipboard(selected_cmd);
+
+        #[cfg(target_os = "macos")]
+        self.handle_macos_clipboard(selected_cmd);
+
+        #[cfg(target_os = "windows")]
+        self.handle_windows_clipboard(selected_cmd);
+
         // Linux fallback with conditional write
         {
             let wayland = env::var("WAYLAND_DISPLAY").is_ok();
@@ -288,14 +356,59 @@ impl App {
         let _ = copypasta::ClipboardContext::new()
             .and_then(|mut ctx| ctx.set_contents(selected_cmd.to_owned()));
     }
-    
 
-    pub fn get_help_text(&self) -> &'static str {
-        HELP_TEXT
+    #[cfg(target_os = "linux")]
+    fn handle_linux_clipboard(&self, cmd: &str) {
+        use std::io::Write;
+
+        let wayland = env::var("WAYLAND_DISPLAY").is_ok();
+        let x11 = env::var("DISPLAY").is_ok();
+
+        if wayland {
+            let _ = Command::new("wl-copy")
+                .arg(cmd)
+                .spawn()
+                .map_err(|e| eprintln!("Wayland error: {e}"));
+        } else if x11 {
+            let _ = Command::new("xclip")
+                .args(["-selection", "clipboard"])
+                .stdin(Stdio::piped())
+                .spawn()
+                .and_then(|mut child| {
+                    child.stdin.as_mut().unwrap().write_all(cmd.as_bytes())
+                });
+        }
     }
 
-    pub fn set_size(&self, size: usize) {
-        self.size.set(size);
+    #[cfg(target_os = "macos")]
+    fn handle_macos_clipboard(&self, cmd: &str) {
+        use std::io::Write;
+        
+        let _ = Command::new("pbcopy")
+            .stdin(Stdio::piped())
+            .spawn()
+            .and_then(|mut child| {
+                child.stdin.as_mut().unwrap().write_all(cmd.as_bytes())
+            });
+    }
+
+    #[cfg(target_os = "windows")]
+    fn handle_windows_clipboard(&self, cmd: &str) {
+        let _ = Command::new("powershell")
+            .args([
+                "-Command",
+                &format!("Set-Clipboard -Value '{}'", cmd.replace("'", "''")),
+            ])
+            .spawn();
+    }
+
+    // -- Bookmarks -- //
+    pub fn current_list(&self) -> &Vec<String> {
+        if self.bookmark_mode {
+            &self.bookmarks
+        } else {
+            &self.queried_history
+        }
     }
 
     fn get_bookmark_path() -> PathBuf {
@@ -324,20 +437,37 @@ impl App {
         self.skipped_items = 0;
     }
 
-    pub fn add_bookmark(&mut self) {
+    pub fn toggle_bookmark(&mut self) {
         if let Some(cmd) = self.current_list().get(self.selected) {
-            if !self.bookmarks.contains(cmd) {
+            if let Some(pos) = self.bookmarks.iter().position(|b| b == cmd) {
+                self.bookmarks.remove(pos);
+                self.message = "Bookmark removed!".to_string();
+            } else {
                 self.bookmarks.push(cmd.clone());
-                self.save_bookmarks();
+                self.message = "Bookmark added!".to_string();
+            }
+            self.save_bookmarks();
+            
+            if self.bookmark_mode {
+                self.queried_history = self.bookmarks.clone();
             }
         }
     }
 
-    pub fn current_list(&self) -> &Vec<String> {
-        if self.bookmark_mode {
-            &self.bookmarks
-        } else {
-            &self.queryed_history
+    pub fn delete_bookmark(&mut self) {
+        if !self.bookmarks.is_empty() {
+            self.bookmarks.remove(self.selected);
+            self.selected = self.selected.min(self.bookmarks.len().saturating_sub(1));
+            self.save_bookmarks();
+            self.message = "Bookmark deleted!".to_string();
         }
+    }
+
+    pub fn get_help_text(&self) -> &'static str {
+        HELP_TEXT
+    }
+
+    pub fn set_size(&self, size: usize) {
+        self.size.set(size);
     }
 }
