@@ -28,9 +28,13 @@ pub fn handle_events<B: ratatui::backend::Backend>(
                     }
 
                     KeyCode::Char('b') if !app.search_mode => {
-                        app.add_bookmark();
-                        app.message = "Bookmark added!".to_string();
+                        if app.bookmark_mode {
+                            app.delete_bookmark();
+                        } else {
+                            app.toggle_bookmark();
+                        }
                     }
+
                     KeyCode::Char('B') if !app.search_mode => {
                         app.toggle_bookmark_mode();
                         app.message = if app.bookmark_mode { 
@@ -40,6 +44,10 @@ pub fn handle_events<B: ratatui::backend::Backend>(
                         };
                     }
 
+                    KeyCode::Char('d') if app.bookmark_mode && !app.search_mode => {
+                        app.delete_bookmark();
+                    }
+                    
                     KeyCode::Up | KeyCode::Char('k') => app.move_selection(MoveDirection::Up),
                     KeyCode::Down | KeyCode::Char('j') => app.move_selection(MoveDirection::Down),
 
