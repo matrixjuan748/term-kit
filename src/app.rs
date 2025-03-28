@@ -1,6 +1,7 @@
 // app.rs
 use copypasta::ClipboardProvider;
 use std::cell::Cell;
+use std::env;
 use std::fs;
 use std::path::PathBuf;
 
@@ -271,9 +272,13 @@ impl App {
 
     // -- Selection -- //
     pub fn copy_selected(&mut self) {
-        let Some(selected_cmd) = self.current_list().get(self.selected) else {
+        let selected_cmd = if let Some(cmd) = self.current_list().get(self.selected) {
+            cmd
+        } else {
             self.message = "No command to copy".into();
-        }
+            return;
+        };
+        
 
         let is_valid = {
             let current_list = self.current_list();
