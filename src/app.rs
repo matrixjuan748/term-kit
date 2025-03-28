@@ -273,6 +273,14 @@ impl App {
     pub fn copy_selected(&mut self) {
         let Some(selected_cmd) = self.current_list().get(self.selected) else {
             self.message = "No command to copy".into();
+
+        let is_valid = {
+            let current_list = self.current_list();
+            !current_list.is_empty() && self.selected < current_list.len()
+        };
+
+        if !is_valid {
+            self.message = "No command to copy".to_string();
             return;
         };
 
@@ -286,7 +294,65 @@ impl App {
         #[cfg(target_os = "windows")]
         self.handle_windows_clipboard(selected_cmd);
 
-        // Universal fallback
+        // Linux fallback with conditional write
+        {
+            let wayland = env::var("WAYLAND_DISPLAY").is_ok();
+            let x11 = env::var("DISPLAY").is_ok();
+            
+            if wayland {
+                let _ = Command::new("wl-copy")
+                    .arg(&selected_cmd)
+                    .spawn()
+                    .map_err(|e| eprintln!("Wayland error: {}", e));
+            } else if x11 {
+                
+                #[cfg(any(target_os = "linux", target_os = "macos"))]
+                {
+                    use std::io::Write;
+                    let _ = Command::new("xclip")
+                        .args(&["-selection", "clipboard"])
+                        .stdin(Stdio::piped())
+                        .spawn()
+                        .and_then(|mut child| {
+                            child.stdin
+                                .as_mut()
+                                .unwrap()
+                                .write_all(selected_cmd.as_bytes())
+                        });
+                }
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            // macOS specific write operation
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
+            {
+                use std::io::Write;
+                let _ = Command::new("pbcopy")
+                    .stdin(Stdio::piped())
+                    .spawn()
+                    .and_then(|mut child| {
+                        child.stdin
+                            .as_mut()
+                            .unwrap()
+                            .write_all(selected_cmd.as_bytes())
+                    });
+            }
+        }
+
+        #[cfg(target_os = "windows")]
+        // Windows PowerShell implementation (no write needed)
+        {
+            let _ = Command::new("powershell")
+                .args(&[
+                    "-Command",
+                    &format!("Set-Clipboard -Value '{}'", selected_cmd.replace("'", "''")),
+                ])
+                .spawn();
+        }
+
+        // Universal Fallback
         let _ = copypasta::ClipboardContext::new()
             .and_then(|mut ctx| ctx.set_contents(selected_cmd.to_owned()));
     }
