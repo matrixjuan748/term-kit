@@ -272,10 +272,6 @@ impl App {
 
     // -- Selection -- //
     pub fn copy_selected(&mut self) {
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> ca18d76386ac910915f54d9ee2e600d8d263a695
         let selected_cmd = if let Some(cmd) = self.current_list().get(self.selected) {
             cmd
         } else {
@@ -284,11 +280,6 @@ impl App {
         };
         
 
-<<<<<<< HEAD
-=======
->>>>>>> origin/main
-=======
->>>>>>> ca18d76386ac910915f54d9ee2e600d8d263a695
         let is_valid = {
             let current_list = self.current_list();
             !current_list.is_empty() && self.selected < current_list.len()
@@ -477,10 +468,6 @@ impl App {
             self.message = "Bookmark deleted!".to_string();
         }
     }
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> ca18d76386ac910915f54d9ee2e600d8d263a695
 
     pub fn get_help_text(&self) -> &'static str {
         HELP_TEXT
@@ -489,10 +476,4 @@ impl App {
     pub fn set_size(&self, size: usize) {
         self.size.set(size);
     }
-<<<<<<< HEAD
-=======
->>>>>>> origin/main
 }
-=======
-}
->>>>>>> ca18d76386ac910915f54d9ee2e600d8d263a695
