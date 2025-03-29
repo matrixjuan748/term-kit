@@ -272,55 +272,53 @@ impl App {
         self.message = format!("Copied: {}", selected_cmd);
     }
 
-    // ... bookmark相关方法保持不变 ...
-}
+ fn get_bookmark_path() -> PathBuf {
+        directories::BaseDirs::new()
+            .unwrap()
+            .home_dir()
+            .join(".term_kit_bookmarks")
+    }
 
-// events.rs
-use crossterm::event::{self, KeyCode, KeyEvent};
-use ratatui::backend::Backend;
-use ratatui::Terminal;
-use std::io::Result;
-
-pub fn handle_events<B: Backend>(terminal: &mut Terminal<B>, app: &mut crate::app::App) -> Result<()> {
-    loop {
-        terminal.draw(|f| crate::ui::draw_ui(f, app))?;
-
-        if app.should_quit {
-            break;
+    fn load_bookmarks(&mut self) {
+        if let Ok(content) = fs::read_to_string(&self.bookmark_path) {
+            self.bookmarks = serde_json::from_str(&content).unwrap_or_default();
         }
+    }
 
-        if event::poll(std::time::Duration::from_millis(100))? {
-            if let event::Event::Key(KeyEvent { code, .. }) = event::read()? {
-                match code {
-                    KeyCode::Char('h') => app.show_help = !app.show_help,
-                    KeyCode::Char('q') => app.should_quit = true,
-                    KeyCode::Enter => app.copy_selected(),
-                    KeyCode::Char('b') if !app.search_mode => app.add_bookmark(),
-                    KeyCode::Char('B') if !app.search_mode => app.toggle_bookmark_mode(),
-                    KeyCode::Up | KeyCode::Char('k') => app.move_selection(MoveDirection::Up),
-                    KeyCode::Down | KeyCode::Char('j') => app.move_selection(MoveDirection::Down),
-                    KeyCode::Char('/') => {
-                        app.search_mode = true;
-                        app.clear_query();
-                    }
-                    KeyCode::Esc => handle_escape(app),
-                    KeyCode::Char(c) if app.search_mode => app.push_query(c),
-                    KeyCode::Backspace if app.search_mode => app.pop_query(),
-                    _ => {}
-                }
+    fn save_bookmarks(&self) {
+        let _ = fs::write(
+            &self.bookmark_path,
+            serde_json::to_string_pretty(&self.bookmarks).unwrap(),
+        );
+    }
+
+    pub fn toggle_bookmark_mode(&mut self) {
+        self.bookmark_mode = !self.bookmark_mode;
+        self.selected = 0;
+        self.skipped_items = 0;
+    }
+
+    pub fn add_bookmark(&mut self) {
+        if let Some(cmd) = self.current_list().get(self.selected) {
+            if !self.bookmarks.contains(cmd) {
+                self.bookmarks.push(cmd.clone());
+                self.save_bookmarks();
             }
         }
     }
-    Ok(())
-}
 
-fn handle_escape(app: &mut crate::app::App) {
-    if app.search_mode {
-        app.search_mode = false;
-        app.clear_query();
-    } else if app.show_help {
-        app.show_help = false;
-    } else if app.bookmark_mode {
-        app.toggle_bookmark_mode();
+    pub fn current_list(&self) -> &Vec<String> {
+        if self.bookmark_mode {
+            &self.bookmarks
+        } else {
+            &self.queryed_history
+        }
+    }
+    pub fn get_help_text(&self) -> &'static str {
+        HELP_TEXT
+    }
+
+    pub fn set_size(&self, size: usize) {
+        self.size.set(size);
     }
 }
