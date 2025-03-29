@@ -30,6 +30,8 @@ Bookmark Mode:
   d - Delete selected bookmark
 "#;
 
+const HISTORY_LIMIT: usize = 5000;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MoveDirection {
     Up,
@@ -64,11 +66,9 @@ pub struct App {
 }
 
 impl Shell {
-    /// Detect the current shell based on platform and environment
     pub fn detect() -> Self {
         #[cfg(target_os = "windows")]
         {
-            // Windows defaults to PowerShell
             Shell::PowerShell
         }
 
@@ -91,7 +91,6 @@ impl Shell {
         }
     }
 
-    // Get history file path for the shell
     pub fn history_path(&self) -> PathBuf {
         let base_dirs = directories::BaseDirs::new().unwrap();
         let mut path = base_dirs.home_dir().to_path_buf();
@@ -107,23 +106,20 @@ impl Shell {
             Shell::Zsh => path.push(".zsh_history"),
             Shell::Bash => path.push(".bash_history"),
             Shell::Fish => path.push(".local/share/fish/fish_history"),
-            Shell::Unknown(_) => path.push(".bash_history"), // Fallback
+            Shell::Unknown(_) => path.push(".bash_history"),
         }
         path
     }
 
-    /// Parse shell-specific history format
     pub fn parse_history(&self, content: Vec<u8>) -> Vec<String> {
         match self {
             Shell::PowerShell => Self::parse_powershell(content),
             Shell::Zsh => Self::parse_zsh(content),
             Shell::Bash => Self::parse_bash(content),
             Shell::Fish => Self::parse_fish(content),
-            Shell::Unknown(_) => Self::parse_bash(content), // Fallback to bash parsing
+            Shell::Unknown(_) => Self::parse_bash(content),
         }
     }
-
-    // -- History Parsers -- //
 
     fn parse_powershell(content: Vec<u8>) -> Vec<String> {
         String::from_utf8(content)
@@ -132,7 +128,7 @@ impl Shell {
             .rev()
             .map(|line| line.trim().to_string())
             .filter(|line| !line.is_empty())
-            .take(1000)
+            .take(HISTORY_LIMIT)
             .collect()
     }
 
@@ -140,7 +136,6 @@ impl Shell {
         let mut decoded = Vec::new();
         let mut p = 0;
 
-        // Handle zsh's metacharacter encoding
         while p < content.len() && content[p] != 0x83 {
             decoded.push(content[p]);
             p += 1;
@@ -162,10 +157,11 @@ impl Shell {
         String::from_utf8(decoded)
             .expect("Failed to decode Zsh history")
             .lines()
-            .filter_map(|line| line.splitn(2, ';').nth(1))
-            .map(String::from)
+            .filter_map(|line| line.splitn(2, ':').last())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
             .rev()
-            .take(1000)
+            .take(HISTORY_LIMIT)
             .collect()
     }
 
@@ -173,9 +169,13 @@ impl Shell {
         String::from_utf8(content)
             .expect("Failed to decode Bash history")
             .lines()
+            .filter(|line| !line.starts_with('#'))
+            .map(|line| line
+                 .trim_start_matches(|c: char| c.is_numeric() || c == '#')
+                 .trim()
+                 .to_string())
             .rev()
-            .take(1000)
-            .map(String::from)
+            .take(HISTORY_LIMIT)
             .collect()
     }
 
@@ -184,9 +184,11 @@ impl Shell {
             .expect("Failed to decode Fish history")
             .lines()
             .filter_map(|line| line.strip_prefix("- cmd: "))
+            .flat_map(|cmd| cmd.split("\\n"))
+            .map(str::trim)
             .map(String::from)
             .rev()
-            .take(1000)
+            .take(HISTORY_LIMIT)
             .collect()
     }
 }
@@ -217,13 +219,20 @@ impl App {
         app
     }
 
-    // -- History -- //
     fn load_history(shell: &Shell) -> Vec<String> {
         let history_path = shell.history_path();
 
+        // Debug output
+        println!("Loading history from: {}", history_path.display());
+        if let Ok(metadata) = fs::metadata(&history_path) {
+            println!("File size: {} bytes", metadata.len());
+        } else {
+            println!("File not found");
+        }
+
         fs::read(&history_path)
             .map(|content| shell.parse_history(content))
-            .unwrap_or_else(|_| vec!["No history found".into()])
+            .unwrap_or_else(|e| vec![format!("Error: {}", e)])
     }
 
     pub fn search_query(&self) -> &str {
@@ -246,10 +255,12 @@ impl App {
     }
 
     fn update_queried_history(&mut self) {
+        let query = self.search_query.to_lowercase();
         self.queried_history = self.history
             .iter()
-            .filter(|cmd| cmd.contains(&self.search_query))
+            .filter(|cmd| cmd.to_lowercase().contains(&query))
             .cloned()
+            .take(HISTORY_LIMIT)
             .collect();
         self.selected = self.selected.min(self.queried_history.len().saturating_sub(1));
     }
@@ -270,27 +281,15 @@ impl App {
         }
     }
 
-    // -- Selection -- //
     pub fn copy_selected(&mut self) {
-        let selected_cmd = if let Some(cmd) = self.current_list().get(self.selected) {
-            cmd
-        } else {
-            self.message = "No command to copy".into();
-            return;
-        };
-        
-
-        let is_valid = {
-            let current_list = self.current_list();
-            !current_list.is_empty() && self.selected < current_list.len()
+        let selected_cmd = match self.current_list().get(self.selected) {
+            Some(cmd) => cmd,
+            None => {
+                self.message = "No command to copy".into();
+                return;
+            }
         };
 
-        if !is_valid {
-            self.message = "No command to copy".to_string();
-            return;
-        };
-
-        // Platform-specific clipboard handling
         #[cfg(target_os = "linux")]
         self.handle_linux_clipboard(selected_cmd);
 
@@ -300,84 +299,23 @@ impl App {
         #[cfg(target_os = "windows")]
         self.handle_windows_clipboard(selected_cmd);
 
-        // Linux fallback with conditional write
-        {
-            let wayland = env::var("WAYLAND_DISPLAY").is_ok();
-            let x11 = env::var("DISPLAY").is_ok();
-            
-            if wayland {
-                let _ = Command::new("wl-copy")
-                    .arg(&selected_cmd)
-                    .spawn()
-                    .map_err(|e| eprintln!("Wayland error: {}", e));
-            } else if x11 {
-                
-                #[cfg(any(target_os = "linux", target_os = "macos"))]
-                {
-                    use std::io::Write;
-                    let _ = Command::new("xclip")
-                        .args(&["-selection", "clipboard"])
-                        .stdin(Stdio::piped())
-                        .spawn()
-                        .and_then(|mut child| {
-                            child.stdin
-                                .as_mut()
-                                .unwrap()
-                                .write_all(selected_cmd.as_bytes())
-                        });
-                }
-            }
-        }
-
-        #[cfg(target_os = "macos")]
-        {
-            // macOS specific write operation
-            #[cfg(any(target_os = "linux", target_os = "macos"))]
-            {
-                use std::io::Write;
-                let _ = Command::new("pbcopy")
-                    .stdin(Stdio::piped())
-                    .spawn()
-                    .and_then(|mut child| {
-                        child.stdin
-                            .as_mut()
-                            .unwrap()
-                            .write_all(selected_cmd.as_bytes())
-                    });
-            }
-        }
-
-        #[cfg(target_os = "windows")]
-        // Windows PowerShell implementation (no write needed)
-        {
-            let _ = Command::new("powershell")
-                .args(&[
-                    "-Command",
-                    &format!("Set-Clipboard -Value '{}'", selected_cmd.replace("'", "''")),
-                ])
-                .spawn();
-        }
-
-        // Universal Fallback
-        let _ = copypasta::ClipboardContext::new()
-            .and_then(|mut ctx| ctx.set_contents(selected_cmd.to_owned()));
+        self.message = format!("Copied: {}", selected_cmd);
     }
 
     #[cfg(target_os = "linux")]
     fn handle_linux_clipboard(&self, cmd: &str) {
         use std::io::Write;
-
+        
         let wayland = env::var("WAYLAND_DISPLAY").is_ok();
         let x11 = env::var("DISPLAY").is_ok();
 
         if wayland {
             let _ = Command::new("wl-copy")
                 .arg(cmd)
-                .spawn()
-                .map_err(|e| eprintln!("Wayland error: {e}"));
+                .spawn();
         } else if x11 {
             let _ = Command::new("xclip")
-                .args(["-selection", "clipboard"])
+                .args(&["-selection", "clipboard"])
                 .stdin(Stdio::piped())
                 .spawn()
                 .and_then(|mut child| {
@@ -401,14 +339,13 @@ impl App {
     #[cfg(target_os = "windows")]
     fn handle_windows_clipboard(&self, cmd: &str) {
         let _ = Command::new("powershell")
-            .args([
+            .args(&[
                 "-Command",
                 &format!("Set-Clipboard -Value '{}'", cmd.replace("'", "''")),
             ])
             .spawn();
     }
 
-    // -- Bookmarks -- //
     pub fn current_list(&self) -> &Vec<String> {
         if self.bookmark_mode {
             &self.bookmarks
@@ -441,6 +378,11 @@ impl App {
         self.bookmark_mode = !self.bookmark_mode;
         self.selected = 0;
         self.skipped_items = 0;
+        self.queried_history = if self.bookmark_mode {
+            self.bookmarks.clone()
+        } else {
+            self.history.clone()
+        };
     }
 
     pub fn toggle_bookmark(&mut self) {
@@ -453,10 +395,6 @@ impl App {
                 self.message = "Bookmark added!".to_string();
             }
             self.save_bookmarks();
-            
-            if self.bookmark_mode {
-                self.queried_history = self.bookmarks.clone();
-            }
         }
     }
 
