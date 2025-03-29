@@ -185,12 +185,12 @@ impl Shell {
             .lines()
             .filter_map(|line| line.strip_prefix("- cmd: "))
             .flat_map(|cmd| cmd.split("\\n"))
-            .map(|s| s.trim()to_string())
+            .map(|s| s.trim().to_string())
             .map(String::from)
             .collect::<Vec<String>>()
             .rev()
             .take(HISTORY_LIMIT)
-            .collect()
+            .collect::<Vec<String>>
     }
 }
 
