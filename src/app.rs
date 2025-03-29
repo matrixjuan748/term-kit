@@ -71,8 +71,9 @@ impl App {
             size: Cell::new(0),
             show_help: false,
             should_quit: false,
-            message: String::new(),
+            message: "".to_string(),
         };
+
         app.load_bookmarks();
         app
     }
@@ -82,18 +83,21 @@ impl App {
     }
 
     fn get_history_path(shell: &str) -> PathBuf {
-        let mut path = directories::BaseDirs::new().unwrap().home_dir().to_path_buf();
+        let mut path = PathBuf::new();
+        path.push(directories::BaseDirs::new().unwrap().home_dir());
+
         match shell {
             s if s.contains("zsh") => path.push(".zsh_history"),
             s if s.contains("fish") => path.push(".local/share/fish/fish_history"),
             _ => path.push(".bash_history"),
         }
+
         path
     }
 
     fn parse_bash_history(content: Vec<u8>) -> Vec<String> {
         String::from_utf8(content)
-            .unwrap_or_default()
+            .expect("Can't decode")
             .lines()
             .rev()
             .take(1000)
@@ -105,28 +109,39 @@ impl App {
         let mut decoded = Vec::new();
         let mut p = 0;
 
+        // Skip metadata
         while p < content.len() && content[p] != 0x83 {
             decoded.push(content[p]);
             p += 1;
         }
 
+        // Process encoded characters
         while p < content.len() {
-            if content[p] == 0x83 {
+            let current_char = content[p];
+            if current_char == 0x83 {
                 p += 1;
                 if p < content.len() {
                     decoded.push(content[p] ^ 32);
                 }
             } else {
-                decoded.push(content[p]);
+                decoded.push(current_char);
             }
             p += 1;
         }
 
-        String::from_utf8(decoded)
-            .unwrap_or_default()
+        // Error handling for UTF-8 conversion
+        let decoded_str = match String::from_utf8(decoded) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Error decoding zsh history: {}", e);
+                return Vec::new();
+            }
+        };
+
+        decoded_str
             .lines()
             .filter_map(|line| line.splitn(2, ';').nth(1))
-            .map(|s| s.trim().to_string())
+            .map(|cmd| cmd.trim().to_string())
             .rev()
             .take(1000)
             .collect()
@@ -134,10 +149,10 @@ impl App {
 
     fn parse_fish_history(content: Vec<u8>) -> Vec<String> {
         String::from_utf8(content)
-            .unwrap_or_default()
+            .expect("Can't decode")
             .lines()
             .filter_map(|line| line.strip_prefix("- cmd: "))
-            .map(|s| s.trim().to_string())
+            .map(|cmd| cmd.trim().to_string())
             .rev()
             .take(1000)
             .collect()
@@ -147,13 +162,18 @@ impl App {
         let shell = Self::detect_shell();
         let history_path = Self::get_history_path(&shell);
 
-        fs::read(&history_path)
-            .map(|content| match {
-                _ if shell.contains("zsh") => Self::parse_zsh_history(content),
-                _ if shell.contains("fish") => Self::parse_fish_history(content),
-                _ => Self::parse_bash_history(content),
-            })
-            .unwrap_or_else(|_| vec!["No history found".into()])
+        match fs::read(&history_path) {
+            Ok(content) => {
+                if shell.contains("zsh") {
+                    Self::parse_zsh_history(content)
+                } else if shell.contains("fish") {
+                    Self::parse_fish_history(content)
+                } else {
+                    Self::parse_bash_history(content)
+                }
+            }
+            Err(_) => vec!["No history found".into()],
+        }
     }
 
     pub fn push_query(&mut self, c: char) {
@@ -182,26 +202,19 @@ impl App {
     }
 
     pub fn move_selection(&mut self, direction: MoveDirection) {
-        let len = self.current_list().len();
-        if len == 0 {
-            return;
-        }
-
         match direction {
             MoveDirection::Up if self.selected > 0 => self.selected -= 1,
-            MoveDirection::Down if self.selected < len - 1 => self.selected += 1,
-            _ => {}
+            MoveDirection::Down if self.selected < self.queryed_history.len() - 1 => {
+                self.selected += 1
+            }
+            _ => (),
         }
 
-        let view_height = self.size.get();
-        if view_height == 0 {
-            return;
-        }
-
+        // Handle scroll position
         if self.selected < self.skipped_items {
             self.skipped_items = self.selected;
-        } else if self.selected >= self.skipped_items + view_height {
-            self.skipped_items = self.selected - view_height + 1;
+        } else if self.selected >= self.skipped_items + self.size.get() {
+            self.skipped_items += 1;
         }
     }
 
@@ -213,66 +226,65 @@ impl App {
         }
 
         let selected_cmd = current_list[self.selected].clone();
-        let mut success = false;
 
-        // Platform-specific implementations
+        // Platform-specific clipboard handling
         #[cfg(target_os = "linux")]
         {
             let wayland = env::var("WAYLAND_DISPLAY").is_ok();
             let x11 = env::var("DISPLAY").is_ok();
 
             if wayland {
-                success = Command::new("wl-copy")
+                if Command::new("wl-copy")
                     .arg(&selected_cmd)
                     .status()
-                    .map(|s| s.success())
-                    .unwrap_or(false);
+                    .is_ok()
+                {
+                    return;
+                }
             }
-            if !success && x11 {
-                success = Command::new("xclip")
+
+            if x11 {
+                if let Ok(mut child) = Command::new("xclip")
                     .args(&["-selection", "clipboard"])
                     .stdin(Stdio::piped())
                     .spawn()
-                    .and_then(|mut child| {
-                        child.stdin.as_mut().unwrap().write_all(selected_cmd.as_bytes())
-                    })
-                    .is_ok();
+                {
+                    let _ = child.stdin.as_mut().unwrap().write_all(selected_cmd.as_bytes());
+                    return;
+                }
             }
         }
 
         #[cfg(target_os = "macos")]
         {
-            success = Command::new("pbcopy")
+            if let Ok(mut child) = Command::new("pbcopy")
                 .stdin(Stdio::piped())
                 .spawn()
-                .and_then(|mut child| {
-                    child.stdin.as_mut().unwrap().write_all(selected_cmd.as_bytes())
-                })
-                .is_ok();
+            {
+                let _ = child.stdin.as_mut().unwrap().write_all(selected_cmd.as_bytes());
+                return;
+            }
         }
 
         #[cfg(target_os = "windows")]
         {
-            success = Command::new("powershell")
+            let _ = Command::new("powershell")
                 .args(&[
                     "-Command",
                     &format!("Set-Clipboard -Value '{}'", selected_cmd.replace("'", "''")),
                 ])
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false);
+                .spawn();
         }
 
-        // Fallback to clipboard crate
-        if !success {
-            let _ = ClipboardProvider::new()
-                .and_then(|mut ctx| ctx.set_contents(selected_cmd.clone()));
+        // Universal fallback
+        if let Ok(mut ctx) = copypasta::ClipboardContext::new() {
+            let _ = ctx.set_contents(selected_cmd);
         }
 
         self.message = format!("Copied: {}", selected_cmd);
     }
 
- fn get_bookmark_path() -> PathBuf {
+    fn get_bookmark_path() -> PathBuf {
         directories::BaseDirs::new()
             .unwrap()
             .home_dir()
@@ -296,14 +308,29 @@ impl App {
         self.bookmark_mode = !self.bookmark_mode;
         self.selected = 0;
         self.skipped_items = 0;
+        self.message = format!(
+            "Switched to {} mode",
+            if self.bookmark_mode { "bookmark" } else { "history" }
+        );
     }
 
     pub fn add_bookmark(&mut self) {
-        if let Some(cmd) = self.current_list().get(self.selected) {
-            if !self.bookmarks.contains(cmd) {
-                self.bookmarks.push(cmd.clone());
-                self.save_bookmarks();
-            }
+        let current_list = self.current_list();
+        if self.selected >= current_list.len() {
+            return;
+        }
+
+        let cmd = current_list[self.selected].trim().to_string();
+        if cmd.is_empty() {
+            return;
+        }
+
+        if self.bookmarks.iter().any(|b| b.trim() == cmd) {
+            self.message = format!("Already bookmarked: {}", cmd);
+        } else {
+            self.bookmarks.push(cmd.clone());
+            self.save_bookmarks();
+            self.message = format!("Bookmarked: {}", cmd);
         }
     }
 
@@ -314,6 +341,7 @@ impl App {
             &self.queryed_history
         }
     }
+
     pub fn get_help_text(&self) -> &'static str {
         HELP_TEXT
     }
