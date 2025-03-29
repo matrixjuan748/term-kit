@@ -193,12 +193,15 @@ impl App {
 
     fn update_filtered_history(&mut self) {
         let query = self.search_query.to_lowercase();
-        self.queryed_history = self.history
+        self.queryed_history = self
+            .history
             .iter()
             .filter(|cmd| cmd.to_lowercase().contains(&query))
             .cloned()
             .collect();
-        self.selected = self.selected.min(self.queryed_history.len().saturating_sub(1));
+        self.selected = self
+            .selected
+            .min(self.queryed_history.len().saturating_sub(1));
     }
 
     pub fn move_selection(&mut self, direction: MoveDirection) {
@@ -220,36 +223,43 @@ impl App {
 
     pub fn copy_selected(&mut self) {
         let current_list = self.current_list();
+
+        // 边界检查
         if current_list.is_empty() || self.selected >= current_list.len() {
             self.message = "No command to copy".to_string();
             return;
         }
 
         let selected_cmd = current_list[self.selected].clone();
+        let msg = format!("Copied: {}", selected_cmd); // 提前保存消息
 
-        // Platform-specific clipboard handling
+        // 平台特定剪贴板实现
         #[cfg(target_os = "linux")]
         {
             let wayland = env::var("WAYLAND_DISPLAY").is_ok();
             let x11 = env::var("DISPLAY").is_ok();
 
+            // Wayland 优先
             if wayland {
-                if Command::new("wl-copy")
-                    .arg(&selected_cmd)
-                    .status()
-                    .is_ok()
-                {
+                if Command::new("wl-copy").arg(&selected_cmd).status().is_ok() {
+                    self.message = msg;
                     return;
                 }
             }
 
+            // X11 回退
             if x11 {
                 if let Ok(mut child) = Command::new("xclip")
                     .args(&["-selection", "clipboard"])
                     .stdin(Stdio::piped())
                     .spawn()
                 {
-                    let _ = child.stdin.as_mut().unwrap().write_all(selected_cmd.as_bytes());
+                    let _ = child
+                        .stdin
+                        .as_mut()
+                        .unwrap()
+                        .write_all(selected_cmd.as_bytes());
+                    self.message = msg;
                     return;
                 }
             }
@@ -257,11 +267,13 @@ impl App {
 
         #[cfg(target_os = "macos")]
         {
-            if let Ok(mut child) = Command::new("pbcopy")
-                .stdin(Stdio::piped())
-                .spawn()
-            {
-                let _ = child.stdin.as_mut().unwrap().write_all(selected_cmd.as_bytes());
+            if let Ok(mut child) = Command::new("pbcopy").stdin(Stdio::piped()).spawn() {
+                let _ = child
+                    .stdin
+                    .as_mut()
+                    .unwrap()
+                    .write_all(selected_cmd.as_bytes());
+                self.message = msg;
                 return;
             }
         }
@@ -274,16 +286,17 @@ impl App {
                     &format!("Set-Clipboard -Value '{}'", selected_cmd.replace("'", "''")),
                 ])
                 .spawn();
+            self.message = msg;
+            return;
         }
 
-        // Universal fallback
+        // 通用剪贴板回退
         if let Ok(mut ctx) = copypasta::ClipboardContext::new() {
-            let _ = ctx.set_contents(selected_cmd);
+            let _ = ctx.set_contents(selected_cmd); // 这里发生所有权转移
         }
 
-        self.message = format!("Copied: {}", selected_cmd);
+        self.message = msg; // 使用提前创建的消息
     }
-
     fn get_bookmark_path() -> PathBuf {
         directories::BaseDirs::new()
             .unwrap()
@@ -297,7 +310,7 @@ impl App {
         }
     }
 
-    fn save_bookmarks(&self) {
+    pub fn save_bookmarks(&self) {
         let _ = fs::write(
             &self.bookmark_path,
             serde_json::to_string_pretty(&self.bookmarks).unwrap(),
@@ -310,7 +323,11 @@ impl App {
         self.skipped_items = 0;
         self.message = format!(
             "Switched to {} mode",
-            if self.bookmark_mode { "bookmark" } else { "history" }
+            if self.bookmark_mode {
+                "bookmark"
+            } else {
+                "history"
+            }
         );
     }
 

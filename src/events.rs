@@ -85,7 +85,7 @@ pub fn handle_events<B: ratatui::backend::Backend>(
                 }
 
                 // 自动清除消息
-                if !code.is_character() || app.message.len() > 30 {
+                if !matches!(code, KeyCode::Char(_)) || app.message.len() > 30 {
                     app.message.clear();
                 }
             }
