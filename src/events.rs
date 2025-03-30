@@ -9,7 +9,7 @@ pub fn handle_events<B: ratatui::backend::Backend>(
     app: &mut App,
 ) -> Result<()> {
     loop {
-        terminal.draw(|f| draw_ui(f, app))?;  
+        terminal.draw(|f| draw_ui(f, app))?;
 
         if app.should_quit {
             break;
@@ -22,7 +22,7 @@ pub fn handle_events<B: ratatui::backend::Backend>(
                     KeyCode::Char('q') => {
                         app.should_quit = true;
                     }
-                    
+
                     KeyCode::Enter => {
                         app.copy_selected();
                     }
@@ -37,7 +37,7 @@ pub fn handle_events<B: ratatui::backend::Backend>(
 
                     KeyCode::Char('B') if !app.search_mode => {
                         app.toggle_bookmark_mode();
-                        app.message = if app.bookmark_mode { 
+                        app.message = if app.bookmark_mode {
                             "Switched to bookmark mode".to_string()
                         } else {
                             "Switched to history mode".to_string()
@@ -47,7 +47,7 @@ pub fn handle_events<B: ratatui::backend::Backend>(
                     KeyCode::Char('d') if app.bookmark_mode && !app.search_mode => {
                         app.delete_bookmark();
                     }
-                    
+
                     KeyCode::Up | KeyCode::Char('k') => app.move_selection(MoveDirection::Up),
                     KeyCode::Down | KeyCode::Char('j') => app.move_selection(MoveDirection::Down),
 
