@@ -2,7 +2,6 @@
 use copypasta::ClipboardProvider;
 use std::cell::Cell;
 use std::fs;
-use std::env;
 use std::path::PathBuf;
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -10,6 +9,9 @@ use std::process::{Command, Stdio};
 
 #[cfg(target_os = "windows")]
 use std::process::Command;
+
+#[cfg(not(target_os = "windows"))]
+use std::env;
 
 const HELP_TEXT: &str = r#"
 Navigation:

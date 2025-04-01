@@ -93,7 +93,7 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
 
     // Search bar implementation
     let search_text = if app.search_mode {
-        format!("/{}", app.search_query)
+        format!("/{}", app.search_query())
     } else {
         "Press / to start searching".into()
     };
