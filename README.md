@@ -26,8 +26,10 @@
 ```bash
 $ git clone https://github.com/WilsonHuang080705/term-kit.git
 $ cd term-kit
-$ cargo run --bin main
+$ cargo run --bin main (Windows步骤相似)
 ```
+
+这个History Finder 已经发布了最新Release! 快来体验吧！
 
 ## 🕹️ 使用指南
 
