@@ -3,14 +3,14 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph, Wrap},
+    widgets::{Block, Borders, Paragraph, Wrap, Clear},
     Frame,
 };
 use crate::app::App;
 
 pub fn draw_ui(f: &mut Frame, app: &mut App) {
     // Main layout structure
-    let layout = Layout::default()
+    let main_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3),  // Header
@@ -20,7 +20,7 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
         ])
         .split(f.area());
 
-    // Render header with mode indication
+    // Render header
     let header = Paragraph::new(Line::from(vec![
         Span::styled("History Finder ", Style::default().fg(Color::Yellow)),
         Span::styled("v0.1", Style::default().fg(Color::LightBlue)),
@@ -34,9 +34,9 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
     .block(Block::default().borders(Borders::ALL))
     .alignment(Alignment::Center);
 
-    f.render_widget(header, layout[0]);
+    f.render_widget(header, main_layout[0]);
 
-    // Main content area with dynamic title
+    // Main content area
     let content_title = if app.bookmark_mode {
         " Bookmarks (Press B to switch) "
     } else {
@@ -47,28 +47,26 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
         .title(content_title)
         .borders(Borders::ALL)
         .style(if app.bookmark_mode {
-            Style::default().fg(Color::Yellow) // Yellow border for bookmark mode
+            Style::default().fg(Color::Yellow)
         } else {
             Style::default()
         });
 
-    // Prepare list items with bookmark indicators
+    // Prepare list items
     let items = app.current_list()
         .iter()
         .enumerate()
         .skip(app.skipped_items)
         .map(|(i, cmd)| {
-            // Add star prefix for bookmarks
             let prefix = if app.bookmark_mode {
                 Span::styled("* ", Style::default().fg(Color::Yellow))
             } else {
                 Span::raw("")
             };
 
-            // Highlight selected item
             let line_style = if i == app.selected {
                 Style::default()
-                    .bg(Color::Rgb(30, 30, 30))  // Dark background
+                    .bg(Color::Rgb(30, 30, 30))
                     .fg(Color::Cyan)
             } else {
                 Style::default()
@@ -85,13 +83,13 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
         })
         .collect::<Vec<_>>();
 
-    let inner_area = content_block.inner(layout[1]);
+    let inner_area = content_block.inner(main_layout[1]);
     app.set_size(inner_area.height.into());
     
-    f.render_widget(content_block, layout[1]);
+    f.render_widget(content_block, main_layout[1]);
     f.render_widget(Paragraph::new(items), inner_area);
 
-    // Search bar implementation
+    // Search bar
     let search_text = if app.search_mode {
         format!("/{}", app.search_query())
     } else {
@@ -102,9 +100,9 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
         .block(Block::default().title(" Search ").borders(Borders::ALL))
         .alignment(Alignment::Left);
 
-    f.render_widget(search_bar, layout[2]);
+    f.render_widget(search_bar, main_layout[2]);
 
-    // Status bar with mode-specific actions
+    // Status bar
     let status_actions = if app.bookmark_mode {
         vec![
             Span::styled(" B ", Style::default().bg(Color::Yellow).fg(Color::Black)),
@@ -134,13 +132,26 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
     status_line.push(Span::raw(&app.message));
 
     f.render_widget(
-        Paragraph::new(Line::from(status_line))
-            .block(Block::default()),
-        layout[3]
+        Paragraph::new(Line::from(status_line)),
+        main_layout[3]
     );
 
-    // Help window overlay
+    // Help window (rendered last to overlay other components)
     if app.show_help {
+        // Create transparent overlay
+        f.render_widget(Clear, f.area());
+        
+        // Calculate help window position
+        let help_area = centered_rect(60, 60, f.area());
+        let vertical_offset = (f.area().height.saturating_sub(help_area.height)) / 4;
+        let adjusted_rect = Rect::new(
+            help_area.x,
+            vertical_offset,
+            help_area.width,
+            help_area.height.min(f.area().height - vertical_offset - 2),
+        );
+
+        // Create help content
         let help_block = Block::default()
             .title(" Help (ESC to close) ")
             .borders(Borders::ALL)
@@ -151,28 +162,19 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
             .block(help_block)
             .wrap(Wrap { trim: true });
 
-        let help_area = centered_rect(60, 30, f.area());
-        f.render_widget(help_para, help_area);
+        f.render_widget(help_para, adjusted_rect);
     }
 }
 
-/// Helper function to create centered rectangular area
+/// Create centered rectangle with size constraints
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
-    let vertical_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(area);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(vertical_chunks[1])[1]
+    let popup_width = (area.width * percent_x / 100).min(area.width - 4);
+    let popup_height = (area.height * percent_y / 100).min(area.height - 4);
+    
+    Rect::new(
+        (area.width - popup_width) / 2,
+        (area.height - popup_height) / 3,  // Adjusted vertical centering
+        popup_width,
+        popup_height,
+    )
 }
