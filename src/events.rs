@@ -1,4 +1,4 @@
-use crossterm::event::{self, KeyCode, KeyEvent};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::Terminal;
 use std::io::Result;
 use crate::app::{App, MoveDirection};
@@ -16,8 +16,13 @@ pub fn handle_events<B: ratatui::backend::Backend>(
         }
 
         if event::poll(std::time::Duration::from_millis(100))? {
-            if let event::Event::Key(KeyEvent { code, .. }) = event::read()? {
-                match code {
+            let event = event::read()?;
+            if let Event::Key(key_event) = event {
+                if key_event.kind != KeyEventKind::Press {
+                    continue;
+                }
+
+                match key_event.code {
                     KeyCode::Char('h') => app.show_help = true,
                     KeyCode::Char('q') => {
                         app.should_quit = true;
@@ -53,26 +58,26 @@ pub fn handle_events<B: ratatui::backend::Backend>(
 
                     KeyCode::Char('/') => {
                         app.search_mode = true;
-                        app.clear_query();  // Use method clear_query
+                        app.clear_query();
                     }
 
                     KeyCode::Esc => {
                         if app.search_mode {
                             app.search_mode = false;
-                            app.clear_query();  // Use method clear_query
+                            app.clear_query();
                         } else if app.show_help {
                             app.show_help = false;
                         } else if app.bookmark_mode {
-                            app.toggle_bookmark_mode(); // Exit Bookmark mode
+                            app.toggle_bookmark_mode();
                         }
                     }
 
                     KeyCode::Char(c) if app.search_mode => {
-                        app.push_query(c);  // Use method push_query
+                        app.push_query(c);
                     }
 
                     KeyCode::Backspace if app.search_mode => {
-                        app.pop_query();  // Use method pop_query
+                        app.pop_query();
                     }
 
                     _ => {}
