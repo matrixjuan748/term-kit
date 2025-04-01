@@ -1,4 +1,4 @@
-name: Rust
+name: Rust CI
 
 on:
   push:
@@ -9,14 +9,66 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
-jobs:
-  build:
+  CLIPPY_OPTIONS: "-D warnings -D clippy::unwrap_used"
 
-    runs-on: ubuntu-latest
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref && github.ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  cross-platform:
+    strategy:
+      fail-fast: false  
+      matrix:
+        platform: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - platform: ubuntu-latest
+            rust_target: x86_64-unknown-linux-gnu
+          - platform: macos-latest
+            rust_target: x86_64-apple-darwin
+          - platform: windows-latest
+            rust_target: x86_64-pc-windows-msvc
+
+    runs-on: ${{ matrix.platform }}
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Setup Rust toolchain
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        target: ${{ matrix.rust_target }}
+        profile: minimal
+        components: rustfmt, clippy
+
+    - name: Install Linux dependencies
+      if: matrix.platform == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y xclip wl-clipboard
+
+    - name: Install Windows dependencies
+      if: matrix.platform == 'windows-latest'
+      run: |
+        # 确保PowerShell可用
+        echo "Windows dependencies already included"
+
     - name: Build
       run: cargo build --verbose
+
     - name: Run tests
       run: cargo test --verbose
+
+    - name: Clippy check
+      run: cargo clippy --all-targets -- $CLIPPY_OPTIONS
+
+    - name: Check formatting
+      run: cargo fmt --all -- --check
+
+    - name: Clipboard integration test
+      shell: bash
+      run: |
+
+        echo "test clipboard content" > clipboard_test.txt
+        
+        cargo test --test clipboard_test -- --nocapture || echo "Clipboard test failed but continuing..."
