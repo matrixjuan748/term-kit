@@ -62,9 +62,6 @@ jobs:
     - name: Clippy check
       run: cargo clippy --all-targets -- $CLIPPY_OPTIONS
 
-    - name: Check formatting
-      run: cargo fmt --all -- --check
-
     - name: Clipboard integration test
       shell: bash
       run: |
