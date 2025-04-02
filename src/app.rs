@@ -329,8 +329,7 @@ impl App {
     #[cfg(target_os = "macos")]
     fn handle_macos_clipboard(&self, cmd: &str) {
         use std::io::Write;
-
-        use anyhow::Ok;
+        use anyhow::{Context, Result};
 
         let _ = Command::new("pbcopy")
             .stdin(Stdio::piped())

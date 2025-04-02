@@ -13,10 +13,10 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),  // Header
-            Constraint::Min(1),     // Main content
-            Constraint::Length(3),  // Search bar
-            Constraint::Length(1),  // Status bar
+            Constraint::Length(3), // Header
+            Constraint::Min(1),    // Main content
+            Constraint::Length(3), // Search bar
+            Constraint::Length(1), // Status bar
         ])
         .split(f.area());
 
@@ -26,8 +26,12 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
         Span::styled("v0.1", Style::default().fg(Color::LightBlue)),
         Span::raw(" | Mode: "),
         Span::styled(
-            if app.bookmark_mode { "BOOKMARKS" } else { "HISTORY" },
-            Style::default().fg(Color::Cyan)
+            if app.bookmark_mode { 
+                "BOOKMARKS" 
+            } else { 
+                "HISTORY" 
+            },
+            Style::default().fg(Color::Cyan),
         ),
         Span::raw(" | [B]Toggle | [/]Search | [h]Help | [q]Quit"),
     ]))
@@ -53,7 +57,8 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
         });
 
     // Prepare list items
-    let items = app.current_list()
+    let items = app
+        .current_list()
         .iter()
         .enumerate()
         .skip(app.skipped_items)
@@ -66,8 +71,7 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
 
             let line_style = if i == app.selected {
                 Style::default()
-                    .bg(Color::Rgb(30, 30, 30))
-                    .fg(Color::Cyan)
+                    .bg(Color::Rgb(30, 30, 30)).fg(Color::Cyan)
             } else {
                 Style::default()
             };
@@ -75,7 +79,7 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
             Line::from(vec![
                 Span::styled(
                     format!("{:3} ", i + 1),
-                    Style::default().fg(Color::DarkGray)
+                    Style::default().fg(Color::DarkGray),
                 ),
                 prefix,
                 Span::raw(cmd.as_str())
@@ -121,20 +125,27 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
 
     let mut status_line = vec![
         Span::styled(
-            format!(" {} ", if app.bookmark_mode { "BOOKMARK" } else { "HISTORY" }),
+            format!(
+                " {} ", 
+                if app.bookmark_mode { 
+                    "BOOKMARK" 
+                } else { 
+                    "HISTORY" }
+            ),
             Style::default()
                 .fg(Color::Black)
-                .bg(if app.bookmark_mode { Color::Yellow } else { Color::Blue })
+                .bg(if app.bookmark_mode { 
+                    Color::Yellow 
+                } else { 
+                    Color::Blue 
+                }),
         ),
         Span::raw(" "),
     ];
     status_line.extend(status_actions);
     status_line.push(Span::raw(&app.message));
 
-    f.render_widget(
-        Paragraph::new(Line::from(status_line)),
-        main_layout[3]
-    );
+    f.render_widget(Paragraph::new(Line::from(status_line)),main_layout[3]);
 
     // Help window (rendered last to overlay other components)
     if app.show_help {
@@ -173,7 +184,7 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
     
     Rect::new(
         (area.width - popup_width) / 2,
-        (area.height - popup_height) / 3,  // Adjusted vertical centering
+        (area.height - popup_height) / 3, // Adjusted vertical centering
         popup_width,
         popup_height,
     )
