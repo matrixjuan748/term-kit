@@ -95,7 +95,8 @@ impl ShellType {
 
     // Get history file path for the shell
     pub fn history_path(&self) -> PathBuf {
-        let base_dirs = directories::BaseDirs::new().expect("Can't create base dirs.");
+        let base_dirs = directories::BaseDirs::new()
+            .expect("Failed to determine system directories");
         let mut path = base_dirs.home_dir().to_path_buf();
 
         match self {
@@ -314,7 +315,14 @@ impl App {
                 .args(["-selection", "clipboard"])
                 .stdin(Stdio::piped())
                 .spawn()
-                .and_then(|mut child| child.stdin.as_mut().expect("Can't write to xclip stdin").write_all(cmd.as_bytes()));
+                .and_then(|mut child| {
+                    if let Some(stdin) = child.stdin.as_mut() {
+                        stdin.write_all(cmd.as_bytes())
+                    } else {
+                        eprintln!("Failed to get xclip stdin");
+                        Ok(())
+                    }
+                });
         }
     }
 
@@ -322,10 +330,20 @@ impl App {
     fn handle_macos_clipboard(&self, cmd: &str) {
         use std::io::Write;
 
+        use anyhow::Ok;
+
         let _ = Command::new("pbcopy")
             .stdin(Stdio::piped())
             .spawn()
-            .and_then(|mut child| child.stdin.as_mut().unwrap().write_all(cmd.as_bytes()));
+            .and_then(|mut child| {
+                child.stdin
+                    .as_mut()
+                    .map(|stdin| stdin.write_all(cmd.as_bytes()))
+                    .unwrap_or_else(|| {
+                        eprintln!("Falied to get pbcopy stdin");
+                        Ok(())
+                    })
+            });
     }
 
     #[cfg(target_os = "windows")]
@@ -349,7 +367,7 @@ impl App {
 
     fn get_bookmark_path() -> PathBuf {
         directories::BaseDirs::new()
-            .unwrap()
+            .expect("Failed to determine user home directory")
             .home_dir()
             .join(".term_kit_bookmarks")
     }
@@ -361,10 +379,14 @@ impl App {
     }
 
     fn save_bookmarks(&self) {
-        let _ = fs::write(
-            &self.bookmark_path,
-            serde_json::to_string_pretty(&self.bookmarks).expect("Can't save bookmarks."),
-        );
+        match serde_json::to_string_pretty(&self.bookmarks) {
+            Ok(data) => {
+                if let Err(e) = fs::write(&self.bookmark_path, data) {
+                    eprintln!("Failed to save bookmarks: {}", e);
+                }
+            }
+            Err(e) => eprintln!("Failed to serialize bookmarks: {}", e),
+        }
     }
 
     pub fn toggle_bookmark_mode(&mut self) {
