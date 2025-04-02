@@ -95,8 +95,7 @@ impl ShellType {
 
     // Get history file path for the shell
     pub fn history_path(&self) -> PathBuf {
-        let base_dirs = directories::BaseDirs::new()
-            .expect("Failed to determine system directories");
+        let base_dirs = directories::BaseDirs::new().expect("Failed to determine system directories");
         let mut path = base_dirs.home_dir().to_path_buf();
 
         match self {
@@ -328,20 +327,19 @@ impl App {
 
     #[cfg(target_os = "macos")]
     fn handle_macos_clipboard(&self, cmd: &str) {
-        use std::io::Write;
-        use anyhow::{Context, Result};
+        use std::process::{Command, Stdio};
+        use std::io::{self, Write};
 
         let _ = Command::new("pbcopy")
             .stdin(Stdio::piped())
             .spawn()
             .and_then(|mut child| {
-                child.stdin
-                    .as_mut()
-                    .map(|stdin| stdin.write_all(cmd.as_bytes()))
-                    .unwrap_or_else(|| {
-                        eprintln!("Falied to get pbcopy stdin");
-                        Ok(())
-                    })
+                if let Some(stdin) = child.stdin.as_mut() {
+                    stdin.write_all(cmd.as_bytes())
+                } else {
+                    eprintln!("Failed to get pbcopy stdin");
+                    Ok(())
+                }
             });
     }
 

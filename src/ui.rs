@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph, Wrap, Clear},
+    widgets::{Block, Borders, Clear, Paragraph, Wrap},
     Frame,
 };
 use crate::app::App;
@@ -132,20 +132,18 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
                 } else { 
                     "HISTORY" }
             ),
-            Style::default()
-                .fg(Color::Black)
-                .bg(if app.bookmark_mode { 
-                    Color::Yellow 
-                } else { 
-                    Color::Blue 
-                }),
+            Style::default().fg(Color::Black).bg(if app.bookmark_mode { 
+                Color::Yellow 
+            } else { 
+                Color::Blue 
+            }),
         ),
         Span::raw(" "),
     ];
     status_line.extend(status_actions);
     status_line.push(Span::raw(&app.message));
 
-    f.render_widget(Paragraph::new(Line::from(status_line)),main_layout[3]);
+    f.render_widget(Paragraph::new(Line::from(status_line)), main_layout[3]);
 
     // Help window (rendered last to overlay other components)
     if app.show_help {
