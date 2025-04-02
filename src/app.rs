@@ -39,7 +39,7 @@ pub enum MoveDirection {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum Shell {
+pub enum ShellType {
     PowerShell,
     Zsh,
     Bash,
@@ -62,16 +62,16 @@ pub struct App {
     pub message: String,
     pub bookmarks: Vec<String>,
     pub bookmark_mode: bool,
-    current_shell: Shell,
+    current_shell: ShellType,
 }
 
-impl Shell {
+impl ShellType {
     /// Detect the current shell based on platform and environment
     pub fn detect() -> Self {
         #[cfg(target_os = "windows")]
         {
             // Windows defaults to PowerShell
-            Shell::PowerShell
+            ShellType::PowerShell
         }
 
         #[cfg(not(target_os = "windows"))]
@@ -80,36 +80,36 @@ impl Shell {
             let shell_name = shell_path.to_lowercase();
 
             if shell_name.contains("pwsh") || shell_name.contains("powershell") {
-                Shell::PowerShell
+                ShellType::PowerShell
             } else if shell_name.contains("zsh") {
-                Shell::Zsh
+                ShellType::Zsh
             } else if shell_name.contains("fish") {
-                Shell::Fish
+                ShellType::Fish
             } else if shell_name.contains("bash") {
-                Shell::Bash
+                ShellType::Bash
             } else {
-                Shell::Unknown(shell_path)
+                ShellType::Unknown(shell_path)
             }
         }
     }
 
     // Get history file path for the shell
     pub fn history_path(&self) -> PathBuf {
-        let base_dirs = directories::BaseDirs::new().unwrap();
+        let base_dirs = directories::BaseDirs::new().expect("Can't create base dirs.");
         let mut path = base_dirs.home_dir().to_path_buf();
 
         match self {
-            Shell::PowerShell => {
+            ShellType::PowerShell => {
                 #[cfg(target_os = "windows")]
                 path.push("AppData\\Roaming\\Microsoft\\Windows\\PowerShell\\PSReadLine\\ConsoleHost_history.txt");
 
                 #[cfg(not(target_os = "windows"))]
                 path.push(".local/share/powershell/PSReadLine/ConsoleHost_history.txt");
             }
-            Shell::Zsh => path.push(".zsh_history"),
-            Shell::Bash => path.push(".bash_history"),
-            Shell::Fish => path.push(".local/share/fish/fish_history"),
-            Shell::Unknown(_) => path.push(".bash_history"), // Fallback
+            ShellType::Zsh => path.push(".zsh_history"),
+            ShellType::Bash => path.push(".bash_history"),
+            ShellType::Fish => path.push(".local/share/fish/fish_history"),
+            ShellType::Unknown(_) => path.push(".bash_history"), // Fallback
         }
         path
     }
@@ -117,11 +117,11 @@ impl Shell {
     /// Parse shell-specific history format
     pub fn parse_history(&self, content: Vec<u8>) -> Vec<String> {
         match self {
-            Shell::PowerShell => Self::parse_powershell(content),
-            Shell::Zsh => Self::parse_zsh(content),
-            Shell::Bash => Self::parse_bash(content),
-            Shell::Fish => Self::parse_fish(content),
-            Shell::Unknown(_) => Self::parse_bash(content), // Fallback to bash parsing
+            ShellType::PowerShell => Self::parse_powershell(content),
+            ShellType::Zsh => Self::parse_zsh(content),
+            ShellType::Bash => Self::parse_bash(content),
+            ShellType::Fish => Self::parse_fish(content),
+            ShellType::Unknown(_) => Self::parse_bash(content), // Fallback to bash parsing
         }
     }
 
@@ -164,7 +164,7 @@ impl Shell {
         String::from_utf8(decoded)
             .expect("Failed to decode Zsh history")
             .lines()
-            .filter_map(|line| line.splitn(2, ';').nth(1))
+            .filter_map(|line| line.split_once(';').map(|x| x.1))
             .map(String::from)
             .rev()
             .take(1000)
@@ -195,7 +195,7 @@ impl Shell {
 
 impl App {
     pub fn new() -> Self {
-        let current_shell = Shell::detect();
+        let current_shell = ShellType::detect();
         let history = Self::load_history(&current_shell);
 
         let mut app = Self {
@@ -220,7 +220,7 @@ impl App {
     }
 
     // -- History -- //
-    fn load_history(shell: &Shell) -> Vec<String> {
+    fn load_history(shell: &ShellType) -> Vec<String> {
         let history_path = shell.history_path();
 
         fs::read(&history_path)
@@ -314,7 +314,7 @@ impl App {
                 .args(["-selection", "clipboard"])
                 .stdin(Stdio::piped())
                 .spawn()
-                .and_then(|mut child| child.stdin.as_mut().unwrap().write_all(cmd.as_bytes()));
+                .and_then(|mut child| child.stdin.as_mut().expect("Can't write to xclip stdin").write_all(cmd.as_bytes()));
         }
     }
 
@@ -363,7 +363,7 @@ impl App {
     fn save_bookmarks(&self) {
         let _ = fs::write(
             &self.bookmark_path,
-            serde_json::to_string_pretty(&self.bookmarks).unwrap(),
+            serde_json::to_string_pretty(&self.bookmarks).expect("Can't save bookmarks."),
         );
     }
 
