@@ -4,12 +4,6 @@ use std::cell::Cell;
 use std::fs;
 use std::path::PathBuf;
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-use std::process::{Command, Stdio};
-
-#[cfg(target_os = "windows")]
-use std::process::Command;
-
 #[cfg(not(target_os = "windows"))]
 use std::env;
 
@@ -281,31 +275,31 @@ impl App {
             self.message = "No command to copy".into();
             return;
         };
-    
+
         // Platform-specific clipboard handling
         #[cfg(target_os = "linux")]
         self.handle_linux_clipboard(selected_cmd);
-    
+
         #[cfg(target_os = "macos")]
         self.handle_macos_clipboard(selected_cmd);
-    
+
         #[cfg(target_os = "windows")]
         self.handle_windows_clipboard(selected_cmd);
-    
+
         // Universal fallback
         let _ = copypasta::ClipboardContext::new()
             .and_then(|mut ctx| ctx.set_contents(selected_cmd.to_owned()));
     }
-    
+
     #[cfg(target_os = "linux")]
     fn handle_linux_clipboard(&self, cmd: &str) {
         use std::io::Write;
         use std::process::{Command, Stdio};
         use std::env;
-    
+
         let wayland = env::var("WAYLAND_DISPLAY").is_ok();
         let x11 = env::var("DISPLAY").is_ok();
-    
+
         if wayland {
             let _ = Command::new("wl-copy")
                 .arg(cmd)
@@ -326,12 +320,12 @@ impl App {
                 });
         }
     }
-    
+
     #[cfg(target_os = "macos")]
     fn handle_macos_clipboard(&self, cmd: &str) {
         use std::process::{Command, Stdio};
-        use std::io::{self, Write};
-    
+        use std::io::Write;
+
         let _ = Command::new("pbcopy")
             .stdin(Stdio::piped())
             .spawn()
@@ -344,9 +338,10 @@ impl App {
                 }
             });
     }
-    
+
     #[cfg(target_os = "windows")]
     fn handle_windows_clipboard(&self, cmd: &str) {
+        use std::process::Command;
         let _ = Command::new("powershell")
             .args([
                 "-Command",
@@ -354,7 +349,7 @@ impl App {
             ])
             .spawn();
     }
-    
+
 
     // -- Bookmarks -- //
     pub fn current_list(&self) -> &Vec<String> {
