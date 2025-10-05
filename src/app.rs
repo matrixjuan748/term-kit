@@ -122,14 +122,17 @@ impl ShellType {
     // -- History Parsers -- //
 
     fn parse_powershell(content: Vec<u8>) -> Vec<String> {
-        String::from_utf8(content)
-            .map_err(|e| format!("Failed to decode history: {}", e))?;
-            .lines()
-            .rev()
-            .map(|line| line.trim().to_string())
-            .filter(|line| !line.is_empty())
-            .take(1000)
-            .collect()
+    String::from_utf8(content)
+        .unwrap_or_else(|e| {
+            eprintln!("Failed to decode PowerShell history: {}", e);
+            String::new()
+        })
+        .lines()
+        .rev()
+        .map(|line| line.trim().to_string())
+        .filter(|line| !line.is_empty())
+        .take(1000)
+        .collect()
     }
 
 
