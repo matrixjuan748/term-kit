@@ -123,7 +123,7 @@ impl ShellType {
 
     fn parse_powershell(content: Vec<u8>) -> Vec<String> {
         String::from_utf8(content)
-            .expect("Failed to decode PowerShell history")
+            .map_err(|e| format!("Failed to decode history: {}", e))?;
             .lines()
             .rev()
             .map(|line| line.trim().to_string())
@@ -132,34 +132,15 @@ impl ShellType {
             .collect()
     }
 
+
     fn parse_zsh(content: Vec<u8>) -> Vec<String> {
-        let mut decoded = Vec::new();
-        let mut p = 0;
-
-        // Handle zsh's metacharacter encoding
-        while p < content.len() && content[p] != 0x83 {
-            decoded.push(content[p]);
-            p += 1;
-        }
-
-        while p < content.len() {
-            let current_char = content[p];
-            if current_char == 0x83 {
-                p += 1;
-                if p < content.len() {
-                    decoded.push(content[p] ^ 32);
-                }
-            } else {
-                decoded.push(current_char);
-            }
-            p += 1;
-        }
-
-        String::from_utf8(decoded)
-            .expect("Failed to decode Zsh history")
+        String::from_utf8_lossy(&content)
             .lines()
-            .filter_map(|line| line.split_once(';').map(|x| x.1))
-            .map(String::from)
+            .filter_map(|line| {
+            // 更健壮的 zsh 历史解析
+                line.splitn(2, ';').nth(1).map(|cmd| cmd.trim().to_string())
+            })
+            .filter(|cmd| !cmd.is_empty())
             .rev()
             .take(1000)
             .collect()
@@ -227,8 +208,10 @@ impl App {
     }
 
     pub fn push_query(&mut self, c: char) {
-        self.search_query.push(c);
-        self.update_queried_history();
+        if c.is_ascii_graphic() || c == ' ' {
+            self.search_query.push(c);
+            self.update_queried_history();
+        }
     }
 
     pub fn pop_query(&mut self) {
