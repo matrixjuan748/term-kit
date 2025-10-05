@@ -141,7 +141,7 @@ impl ShellType {
             .lines()
             .filter_map(|line| {
             // 更健壮的 zsh 历史解析
-                line.splitn(2, ';').nth(1).map(|cmd| cmd.trim().to_string())
+                line.split_once(';').map(|x| x.1)
             })
             .filter(|cmd| !cmd.is_empty())
             .rev()
