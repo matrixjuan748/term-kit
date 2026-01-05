@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.99"
+anyhow = "1.0.100"
 crossterm = "0.28.1"
 directories = "6.0.0"
 ratatui = "0.29.0"
