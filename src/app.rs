@@ -1,5 +1,6 @@
 // app.rs
 use copypasta::ClipboardProvider;
+use std::cell::Cell;
 use std::fs;
 use std::path::PathBuf;
 
@@ -49,7 +50,7 @@ pub struct App {
     pub search_mode: bool,
     pub search_query: String,
     pub skipped_items: usize,
-    pub size: usize,                       // 改为普通 usize
+    pub size: Cell<usize>,
     pub show_help: bool,
     pub should_quit: bool,
     pub message: String,
@@ -63,7 +64,6 @@ impl ShellType {
     pub fn detect() -> Self {
         #[cfg(target_os = "windows")]
         {
-            // Windows defaults to PowerShell
             ShellType::PowerShell
         }
 
@@ -137,11 +137,9 @@ impl ShellType {
     fn parse_zsh(content: Vec<u8>) -> Vec<String> {
         String::from_utf8_lossy(&content)
             .lines()
-            .filter_map(|line| {
-                // 更健壮的 zsh 历史解析
-                line.split_once(';').map(|x| x.1)
-            })
+            .filter_map(|line| line.split_once(';').map(|x| x.1))
             .filter(|cmd| !cmd.is_empty())
+            .map(String::from)
             .rev()
             .take(1000)
             .collect()
@@ -184,7 +182,7 @@ impl App {
             search_mode: false,
             search_query: String::new(),
             skipped_items: 0,
-            size: 0,
+            size: Cell::new(0),
             show_help: false,
             should_quit: false,
             message: String::new(),
@@ -204,8 +202,7 @@ impl App {
             .unwrap_or_else(|_| vec!["No history found".into()])
     }
 
-    /// 获取当前搜索查询文本（原 search_query 重命名）
-    pub fn query_text(&self) -> &str {
+    pub fn search_query(&self) -> &str {
         &self.search_query
     }
 
@@ -224,8 +221,7 @@ impl App {
     pub fn clear_query(&mut self) {
         self.search_query.clear();
         self.queried_history = self.history.clone();
-        // 重置滚动状态，防止越界
-        self.selected = self.selected.min(self.queried_history.len().saturating_sub(1));
+        self.selected = 0;
         self.skipped_items = 0;
     }
 
@@ -239,7 +235,7 @@ impl App {
         self.selected = self
             .selected
             .min(self.queried_history.len().saturating_sub(1));
-        self.skipped_items = 0; // 列表变化，重置滚动偏移
+        self.skipped_items = self.skipped_items.min(self.selected);
     }
 
     pub fn move_selection(&mut self, direction: MoveDirection) {
@@ -251,10 +247,15 @@ impl App {
             _ => (),
         }
 
+        let size = self.size.get();
+        if size == 0 {
+            return;
+        }
+
         if self.selected < self.skipped_items {
             self.skipped_items = self.selected;
-        } else if self.selected >= self.skipped_items + self.size {
-            self.skipped_items += 1;
+        } else if self.selected >= self.skipped_items + size {
+            self.skipped_items = self.selected.saturating_sub(size - 1);
         }
     }
 
@@ -278,6 +279,8 @@ impl App {
         // Universal fallback
         let _ = copypasta::ClipboardContext::new()
             .and_then(|mut ctx| ctx.set_contents(selected_cmd.to_owned()));
+
+        self.message = "Copied to clipboard!".to_string();
     }
 
     #[cfg(target_os = "linux")]
@@ -291,11 +294,17 @@ impl App {
 
         if wayland {
             let _ = Command::new("wl-copy")
-                .arg(cmd)
+                .stdin(Stdio::piped())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .spawn()
-                .and_then(|mut child| child.wait());
+                .and_then(|mut child| {
+                    if let Some(stdin) = child.stdin.as_mut() {
+                        stdin.write_all(cmd.as_bytes())?;
+                    }
+                    child.wait().map(|_| ())
+                })
+                .map_err(|e| eprintln!("Wayland clipboard error: {e}"));
         } else if x11 {
             let _ = Command::new("xclip")
                 .args(["-selection", "clipboard"])
@@ -307,8 +316,9 @@ impl App {
                     if let Some(stdin) = child.stdin.as_mut() {
                         stdin.write_all(cmd.as_bytes())?;
                     }
-                    child.wait()
-                });
+                    child.wait().map(|_| ())
+                })
+                .map_err(|e| eprintln!("X11 clipboard error: {e}"));
         }
     }
 
@@ -326,24 +336,28 @@ impl App {
                 if let Some(stdin) = child.stdin.as_mut() {
                     stdin.write_all(cmd.as_bytes())?;
                 }
-                child.wait()
-            });
+                child.wait().map(|_| ())
+            })
+            .map_err(|e| eprintln!("macOS clipboard error: {e}"));
     }
 
     #[cfg(target_os = "windows")]
     fn handle_windows_clipboard(&self, cmd: &str) {
         use std::process::{Command, Stdio};
-        // 对单引号进行转义（PowerShell 单引号字符串内双单引号表示转义）
+
         let escaped = cmd.replace("'", "''");
         let _ = Command::new("powershell")
             .args([
+                "-NoProfile",
                 "-Command",
                 &format!("Set-Clipboard -Value '{}'", escaped),
             ])
+            .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
-            .and_then(|mut child| child.wait());
+            .and_then(|mut child| child.wait().map(|_| ()))
+            .map_err(|e| eprintln!("Windows clipboard error: {e}"));
     }
 
     // -- Bookmarks -- //
@@ -386,22 +400,22 @@ impl App {
     }
 
     pub fn toggle_bookmark(&mut self) {
-        if let Some(cmd) = self.current_list().get(self.selected) {
-            if let Some(pos) = self.bookmarks.iter().position(|b| b == cmd) {
-                self.bookmarks.remove(pos);
-                self.message = "Bookmark removed!".to_string();
-            } else {
-                self.bookmarks.push(cmd.clone());
-                self.message = "Bookmark added!".to_string();
-            }
-            self.save_bookmarks();
+        let Some(cmd) = self.current_list().get(self.selected).cloned() else {
+            return;
+        };
 
-            if self.bookmark_mode {
-                self.queried_history = self.bookmarks.clone();
-                // 重置滚动状态，防止越界
-                self.selected = self.selected.min(self.bookmarks.len().saturating_sub(1));
-                self.skipped_items = 0;
-            }
+        if let Some(pos) = self.bookmarks.iter().position(|b| b == &cmd) {
+            self.bookmarks.remove(pos);
+            self.message = "Bookmark removed!".to_string();
+        } else {
+            self.bookmarks.push(cmd);
+            self.message = "Bookmark added!".to_string();
+        }
+        self.save_bookmarks();
+
+        if self.bookmark_mode {
+            self.queried_history = self.bookmarks.clone();
+            self.selected = self.selected.min(self.queried_history.len().saturating_sub(1));
         }
     }
 
@@ -418,8 +432,7 @@ impl App {
         HELP_TEXT
     }
 
-    /// 设置可见区域大小（原为 Cell，现改为 &mut self）
-    pub fn set_size(&mut self, size: usize) {
-        self.size = size;
+    pub fn set_size(&self, size: usize) {
+        self.size.set(size);
     }
 }
