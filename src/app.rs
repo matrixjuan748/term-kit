@@ -184,7 +184,7 @@ impl App {
             search_mode: false,
             search_query: String::new(),
             skipped_items: 0,
-            size: 0,                     // 初始化为 0
+            size: 0,
             show_help: false,
             should_quit: false,
             message: String::new(),
@@ -224,6 +224,9 @@ impl App {
     pub fn clear_query(&mut self) {
         self.search_query.clear();
         self.queried_history = self.history.clone();
+        // 重置滚动状态，防止越界
+        self.selected = self.selected.min(self.queried_history.len().saturating_sub(1));
+        self.skipped_items = 0;
     }
 
     fn update_queried_history(&mut self) {
@@ -236,6 +239,7 @@ impl App {
         self.selected = self
             .selected
             .min(self.queried_history.len().saturating_sub(1));
+        self.skipped_items = 0; // 列表变化，重置滚动偏移
     }
 
     pub fn move_selection(&mut self, direction: MoveDirection) {
@@ -328,8 +332,9 @@ impl App {
 
     #[cfg(target_os = "windows")]
     fn handle_windows_clipboard(&self, cmd: &str) {
-        use std::process::Command;
-        let escaped = cmd.replace("'", "''"); // 简单的单引号转义
+        use std::process::{Command, Stdio};
+        // 对单引号进行转义（PowerShell 单引号字符串内双单引号表示转义）
+        let escaped = cmd.replace("'", "''");
         let _ = Command::new("powershell")
             .args([
                 "-Command",
@@ -393,8 +398,9 @@ impl App {
 
             if self.bookmark_mode {
                 self.queried_history = self.bookmarks.clone();
-                // 修复越界风险
+                // 重置滚动状态，防止越界
                 self.selected = self.selected.min(self.bookmarks.len().saturating_sub(1));
+                self.skipped_items = 0;
             }
         }
     }
