@@ -1,6 +1,5 @@
 // app.rs
 use copypasta::ClipboardProvider;
-use std::cell::Cell;
 use std::fs;
 use std::path::PathBuf;
 
@@ -50,7 +49,7 @@ pub struct App {
     pub search_mode: bool,
     pub search_query: String,
     pub skipped_items: usize,
-    pub size: Cell<usize>,
+    pub size: usize,                       // 改为普通 usize
     pub show_help: bool,
     pub should_quit: bool,
     pub message: String,
@@ -122,25 +121,24 @@ impl ShellType {
     // -- History Parsers -- //
 
     fn parse_powershell(content: Vec<u8>) -> Vec<String> {
-    String::from_utf8(content)
-        .unwrap_or_else(|e| {
-            eprintln!("Failed to decode PowerShell history: {}", e);
-            String::new()
-        })
-        .lines()
-        .rev()
-        .map(|line| line.trim().to_string())
-        .filter(|line| !line.is_empty())
-        .take(1000)
-        .collect()
+        String::from_utf8(content)
+            .unwrap_or_else(|e| {
+                eprintln!("Failed to decode PowerShell history: {}", e);
+                String::new()
+            })
+            .lines()
+            .rev()
+            .map(|line| line.trim().to_string())
+            .filter(|line| !line.is_empty())
+            .take(1000)
+            .collect()
     }
-
 
     fn parse_zsh(content: Vec<u8>) -> Vec<String> {
         String::from_utf8_lossy(&content)
             .lines()
             .filter_map(|line| {
-            // 更健壮的 zsh 历史解析
+                // 更健壮的 zsh 历史解析
                 line.split_once(';').map(|x| x.1)
             })
             .filter(|cmd| !cmd.is_empty())
@@ -186,7 +184,7 @@ impl App {
             search_mode: false,
             search_query: String::new(),
             skipped_items: 0,
-            size: Cell::new(0),
+            size: 0,                     // 初始化为 0
             show_help: false,
             should_quit: false,
             message: String::new(),
@@ -206,7 +204,8 @@ impl App {
             .unwrap_or_else(|_| vec!["No history found".into()])
     }
 
-    pub fn search_query(&self) -> &str {
+    /// 获取当前搜索查询文本（原 search_query 重命名）
+    pub fn query_text(&self) -> &str {
         &self.search_query
     }
 
@@ -250,7 +249,7 @@ impl App {
 
         if self.selected < self.skipped_items {
             self.skipped_items = self.selected;
-        } else if self.selected >= self.skipped_items + self.size.get() {
+        } else if self.selected >= self.skipped_items + self.size {
             self.skipped_items += 1;
         }
     }
@@ -289,53 +288,58 @@ impl App {
         if wayland {
             let _ = Command::new("wl-copy")
                 .arg(cmd)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
                 .spawn()
-                .map_err(|e| eprintln!("Wayland error: {e}"));
+                .and_then(|mut child| child.wait());
         } else if x11 {
             let _ = Command::new("xclip")
                 .args(["-selection", "clipboard"])
                 .stdin(Stdio::piped())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
                 .spawn()
                 .and_then(|mut child| {
                     if let Some(stdin) = child.stdin.as_mut() {
-                        stdin.write_all(cmd.as_bytes())
-                    } else {
-                        eprintln!("Failed to get xclip stdin");
-                        Ok(())
+                        stdin.write_all(cmd.as_bytes())?;
                     }
+                    child.wait()
                 });
         }
     }
 
     #[cfg(target_os = "macos")]
     fn handle_macos_clipboard(&self, cmd: &str) {
-        use std::process::{Command, Stdio};
         use std::io::Write;
+        use std::process::{Command, Stdio};
 
         let _ = Command::new("pbcopy")
             .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .spawn()
             .and_then(|mut child| {
                 if let Some(stdin) = child.stdin.as_mut() {
-                    stdin.write_all(cmd.as_bytes())
-                } else {
-                    eprintln!("Failed to get pbcopy stdin");
-                    Ok(())
+                    stdin.write_all(cmd.as_bytes())?;
                 }
+                child.wait()
             });
     }
 
     #[cfg(target_os = "windows")]
     fn handle_windows_clipboard(&self, cmd: &str) {
         use std::process::Command;
+        let escaped = cmd.replace("'", "''"); // 简单的单引号转义
         let _ = Command::new("powershell")
             .args([
                 "-Command",
-                &format!("Set-Clipboard -Value '{}'", cmd.replace("'", "''")),
+                &format!("Set-Clipboard -Value '{}'", escaped),
             ])
-            .spawn();
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .and_then(|mut child| child.wait());
     }
-
 
     // -- Bookmarks -- //
     pub fn current_list(&self) -> &Vec<String> {
@@ -389,6 +393,8 @@ impl App {
 
             if self.bookmark_mode {
                 self.queried_history = self.bookmarks.clone();
+                // 修复越界风险
+                self.selected = self.selected.min(self.bookmarks.len().saturating_sub(1));
             }
         }
     }
@@ -406,7 +412,8 @@ impl App {
         HELP_TEXT
     }
 
-    pub fn set_size(&self, size: usize) {
-        self.size.set(size);
+    /// 设置可见区域大小（原为 Cell，现改为 &mut self）
+    pub fn set_size(&mut self, size: usize) {
+        self.size = size;
     }
 }
