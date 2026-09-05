@@ -64,7 +64,6 @@ impl ShellType {
     pub fn detect() -> Self {
         #[cfg(target_os = "windows")]
         {
-            // Windows defaults to PowerShell
             ShellType::PowerShell
         }
 
@@ -122,28 +121,25 @@ impl ShellType {
     // -- History Parsers -- //
 
     fn parse_powershell(content: Vec<u8>) -> Vec<String> {
-    String::from_utf8(content)
-        .unwrap_or_else(|e| {
-            eprintln!("Failed to decode PowerShell history: {}", e);
-            String::new()
-        })
-        .lines()
-        .rev()
-        .map(|line| line.trim().to_string())
-        .filter(|line| !line.is_empty())
-        .take(1000)
-        .collect()
+        String::from_utf8(content)
+            .unwrap_or_else(|e| {
+                eprintln!("Failed to decode PowerShell history: {}", e);
+                String::new()
+            })
+            .lines()
+            .rev()
+            .map(|line| line.trim().to_string())
+            .filter(|line| !line.is_empty())
+            .take(1000)
+            .collect()
     }
-
 
     fn parse_zsh(content: Vec<u8>) -> Vec<String> {
         String::from_utf8_lossy(&content)
             .lines()
-            .filter_map(|line| {
-            // 更健壮的 zsh 历史解析
-                line.split_once(';').map(|x| x.1)
-            })
+            .filter_map(|line| line.split_once(';').map(|x| x.1))
             .filter(|cmd| !cmd.is_empty())
+            .map(String::from)
             .rev()
             .take(1000)
             .collect()
@@ -225,6 +221,8 @@ impl App {
     pub fn clear_query(&mut self) {
         self.search_query.clear();
         self.queried_history = self.history.clone();
+        self.selected = 0;
+        self.skipped_items = 0;
     }
 
     fn update_queried_history(&mut self) {
@@ -237,6 +235,7 @@ impl App {
         self.selected = self
             .selected
             .min(self.queried_history.len().saturating_sub(1));
+        self.skipped_items = self.skipped_items.min(self.selected);
     }
 
     pub fn move_selection(&mut self, direction: MoveDirection) {
@@ -248,10 +247,15 @@ impl App {
             _ => (),
         }
 
+        let size = self.size.get();
+        if size == 0 {
+            return;
+        }
+
         if self.selected < self.skipped_items {
             self.skipped_items = self.selected;
-        } else if self.selected >= self.skipped_items + self.size.get() {
-            self.skipped_items += 1;
+        } else if self.selected >= self.skipped_items + size {
+            self.skipped_items = self.selected.saturating_sub(size - 1);
         }
     }
 
@@ -275,6 +279,8 @@ impl App {
         // Universal fallback
         let _ = copypasta::ClipboardContext::new()
             .and_then(|mut ctx| ctx.set_contents(selected_cmd.to_owned()));
+
+        self.message = "Copied to clipboard!".to_string();
     }
 
     #[cfg(target_os = "linux")]
@@ -288,54 +294,71 @@ impl App {
 
         if wayland {
             let _ = Command::new("wl-copy")
-                .arg(cmd)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
                 .spawn()
-                .map_err(|e| eprintln!("Wayland error: {e}"));
+                .and_then(|mut child| {
+                    if let Some(stdin) = child.stdin.as_mut() {
+                        stdin.write_all(cmd.as_bytes())?;
+                    }
+                    child.wait().map(|_| ())
+                })
+                .map_err(|e| eprintln!("Wayland clipboard error: {e}"));
         } else if x11 {
             let _ = Command::new("xclip")
                 .args(["-selection", "clipboard"])
                 .stdin(Stdio::piped())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
                 .spawn()
                 .and_then(|mut child| {
                     if let Some(stdin) = child.stdin.as_mut() {
-                        stdin.write_all(cmd.as_bytes())
-                    } else {
-                        eprintln!("Failed to get xclip stdin");
-                        Ok(())
+                        stdin.write_all(cmd.as_bytes())?;
                     }
-                });
+                    child.wait().map(|_| ())
+                })
+                .map_err(|e| eprintln!("X11 clipboard error: {e}"));
         }
     }
 
     #[cfg(target_os = "macos")]
     fn handle_macos_clipboard(&self, cmd: &str) {
-        use std::process::{Command, Stdio};
         use std::io::Write;
+        use std::process::{Command, Stdio};
 
         let _ = Command::new("pbcopy")
             .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .spawn()
             .and_then(|mut child| {
                 if let Some(stdin) = child.stdin.as_mut() {
-                    stdin.write_all(cmd.as_bytes())
-                } else {
-                    eprintln!("Failed to get pbcopy stdin");
-                    Ok(())
+                    stdin.write_all(cmd.as_bytes())?;
                 }
-            });
+                child.wait().map(|_| ())
+            })
+            .map_err(|e| eprintln!("macOS clipboard error: {e}"));
     }
 
     #[cfg(target_os = "windows")]
     fn handle_windows_clipboard(&self, cmd: &str) {
-        use std::process::Command;
+        use std::process::{Command, Stdio};
+
+        let escaped = cmd.replace("'", "''");
         let _ = Command::new("powershell")
             .args([
+                "-NoProfile",
                 "-Command",
-                &format!("Set-Clipboard -Value '{}'", cmd.replace("'", "''")),
+                &format!("Set-Clipboard -Value '{}'", escaped),
             ])
-            .spawn();
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .and_then(|mut child| child.wait().map(|_| ()))
+            .map_err(|e| eprintln!("Windows clipboard error: {e}"));
     }
-
 
     // -- Bookmarks -- //
     pub fn current_list(&self) -> &Vec<String> {
@@ -377,19 +400,22 @@ impl App {
     }
 
     pub fn toggle_bookmark(&mut self) {
-        if let Some(cmd) = self.current_list().get(self.selected) {
-            if let Some(pos) = self.bookmarks.iter().position(|b| b == cmd) {
-                self.bookmarks.remove(pos);
-                self.message = "Bookmark removed!".to_string();
-            } else {
-                self.bookmarks.push(cmd.clone());
-                self.message = "Bookmark added!".to_string();
-            }
-            self.save_bookmarks();
+        let Some(cmd) = self.current_list().get(self.selected).cloned() else {
+            return;
+        };
 
-            if self.bookmark_mode {
-                self.queried_history = self.bookmarks.clone();
-            }
+        if let Some(pos) = self.bookmarks.iter().position(|b| b == &cmd) {
+            self.bookmarks.remove(pos);
+            self.message = "Bookmark removed!".to_string();
+        } else {
+            self.bookmarks.push(cmd);
+            self.message = "Bookmark added!".to_string();
+        }
+        self.save_bookmarks();
+
+        if self.bookmark_mode {
+            self.queried_history = self.bookmarks.clone();
+            self.selected = self.selected.min(self.queried_history.len().saturating_sub(1));
         }
     }
 
