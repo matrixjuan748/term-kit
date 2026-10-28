@@ -7,7 +7,9 @@ use crate::ui::draw_ui;
 pub fn handle_events<B: ratatui::backend::Backend>(
     terminal: &mut Terminal<B>,
     app: &mut App,
-) -> Result<()> {
+) -> Result<()> 
+where std::io::Error: From<<B as ratatui::backend::Backend>::Error>
+{
     loop {
         terminal.draw(|f| draw_ui(f, app))?;
 
