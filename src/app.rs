@@ -1,4 +1,3 @@
-// app.rs
 use copypasta::ClipboardProvider;
 use std::cell::Cell;
 use std::fs;
@@ -12,16 +11,16 @@ Navigation:
   Up/Down Arrow  - Move selection
   j/k            - Move selection up/down
   Enter          - Copy selected command
-  /              - Start search (in input mode)
+  /              - Start search
   h              - Toggle help
   q              - Quit
 
 Search Mode:
   Type to filter history
-  Press ESC to cancel search
+  ESC            - Cancel search
 
 Bookmark Mode:
-  b - Add current command to bookmarks
+  b - Toggle bookmark on selected command
   B - Toggle bookmark/history mode
   d - Delete selected bookmark
 "#;
@@ -41,11 +40,10 @@ pub enum ShellType {
     Unknown(String),
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
 pub struct App {
     bookmark_path: PathBuf,
     history: Vec<String>,
-    queried_history: Vec<String>,
+    queried: Vec<String>, // 统一：当前模式 + 搜索过滤后的列表
     pub selected: usize,
     pub search_mode: bool,
     pub search_query: String,
@@ -56,11 +54,9 @@ pub struct App {
     pub message: String,
     pub bookmarks: Vec<String>,
     pub bookmark_mode: bool,
-    current_shell: ShellType,
 }
 
 impl ShellType {
-    /// Detect the current shell based on platform and environment
     pub fn detect() -> Self {
         #[cfg(target_os = "windows")]
         {
@@ -86,7 +82,6 @@ impl ShellType {
         }
     }
 
-    // Get history file path for the shell
     pub fn history_path(&self) -> PathBuf {
         let base_dirs = directories::BaseDirs::new().expect("Failed to determine system directories");
         let mut path = base_dirs.home_dir().to_path_buf();
@@ -102,30 +97,25 @@ impl ShellType {
             ShellType::Zsh => path.push(".zsh_history"),
             ShellType::Bash => path.push(".bash_history"),
             ShellType::Fish => path.push(".local/share/fish/fish_history"),
-            ShellType::Unknown(_) => path.push(".bash_history"), // Fallback
+            ShellType::Unknown(_) => path.push(".bash_history"),
         }
         path
     }
 
-    /// Parse shell-specific history format
     pub fn parse_history(&self, content: Vec<u8>) -> Vec<String> {
         match self {
             ShellType::PowerShell => Self::parse_powershell(content),
             ShellType::Zsh => Self::parse_zsh(content),
             ShellType::Bash => Self::parse_bash(content),
             ShellType::Fish => Self::parse_fish(content),
-            ShellType::Unknown(_) => Self::parse_bash(content), // Fallback to bash parsing
+            ShellType::Unknown(_) => Self::parse_bash(content),
         }
     }
 
-    // -- History Parsers -- //
+    // -- History Parsers（全部 lossy，不再 panic）-- //
 
     fn parse_powershell(content: Vec<u8>) -> Vec<String> {
-        String::from_utf8(content)
-            .unwrap_or_else(|e| {
-                eprintln!("Failed to decode PowerShell history: {}", e);
-                String::new()
-            })
+        String::from_utf8_lossy(&content)
             .lines()
             .rev()
             .map(|line| line.trim().to_string())
@@ -134,35 +124,36 @@ impl ShellType {
             .collect()
     }
 
+    // 修复 #11：没有 ';' 时保留整行（兼容未开 EXTENDED_HISTORY 的 zsh）
     fn parse_zsh(content: Vec<u8>) -> Vec<String> {
         String::from_utf8_lossy(&content)
             .lines()
-            .filter_map(|line| line.split_once(';').map(|x| x.1))
+            .map(|line| line.split_once(';').map(|(_, cmd)| cmd).unwrap_or(line))
             .filter(|cmd| !cmd.is_empty())
-            .map(String::from)
             .rev()
             .take(1000)
+            .map(String::from)
             .collect()
     }
 
+    // 修复 #1：lossy 替代 expect
     fn parse_bash(content: Vec<u8>) -> Vec<String> {
-        String::from_utf8(content)
-            .expect("Failed to decode Bash history")
+        String::from_utf8_lossy(&content)
             .lines()
             .rev()
+            .filter(|line| !line.is_empty())
             .take(1000)
             .map(String::from)
             .collect()
     }
 
     fn parse_fish(content: Vec<u8>) -> Vec<String> {
-        String::from_utf8(content)
-            .expect("Failed to decode Fish history")
+        String::from_utf8_lossy(&content)
             .lines()
             .filter_map(|line| line.strip_prefix("- cmd: "))
-            .map(String::from)
             .rev()
             .take(1000)
+            .map(String::from)
             .collect()
     }
 }
@@ -176,7 +167,7 @@ impl App {
             bookmarks: Vec::new(),
             bookmark_mode: false,
             bookmark_path: Self::get_bookmark_path(),
-            queried_history: history.clone(),
+            queried: history.clone(),
             history,
             selected: 0,
             search_mode: false,
@@ -186,20 +177,42 @@ impl App {
             show_help: false,
             should_quit: false,
             message: String::new(),
-            current_shell,
         };
 
         app.load_bookmarks();
+        app.refresh_list();
         app
     }
 
-    // -- History -- //
+    // 修复 #9：读不到历史返回空列表，不再塞占位符
     fn load_history(shell: &ShellType) -> Vec<String> {
         let history_path = shell.history_path();
-
         fs::read(&history_path)
             .map(|content| shell.parse_history(content))
-            .unwrap_or_else(|_| vec!["No history found".into()])
+            .unwrap_or_default()
+    }
+
+    fn source_list(&self) -> &Vec<String> {
+        if self.bookmark_mode { &self.bookmarks } else { &self.history }
+    }
+
+    // 修复 #5：搜索对 history 和 bookmarks 统一生效
+    fn refresh_list(&mut self) {
+        self.queried = if self.search_query.is_empty() {
+            self.source_list().clone()
+        } else {
+            self.source_list()
+                .iter()
+                .filter(|cmd| cmd.contains(&self.search_query))
+                .cloned()
+                .collect()
+        };
+        self.selected = self.selected.min(self.queried.len().saturating_sub(1));
+        self.skipped_items = self.skipped_items.min(self.selected);
+    }
+
+    pub fn current_list(&self) -> &Vec<String> {
+        &self.queried
     }
 
     pub fn search_query(&self) -> &str {
@@ -209,33 +222,21 @@ impl App {
     pub fn push_query(&mut self, c: char) {
         if c.is_ascii_graphic() || c == ' ' {
             self.search_query.push(c);
-            self.update_queried_history();
+            self.refresh_list();
         }
     }
 
     pub fn pop_query(&mut self) {
-        self.search_query.pop();
-        self.update_queried_history();
+        if self.search_query.pop().is_some() {
+            self.refresh_list();
+        }
     }
 
     pub fn clear_query(&mut self) {
         self.search_query.clear();
-        self.queried_history = self.history.clone();
         self.selected = 0;
         self.skipped_items = 0;
-    }
-
-    fn update_queried_history(&mut self) {
-        self.queried_history = self
-            .history
-            .iter()
-            .filter(|cmd| cmd.contains(&self.search_query))
-            .cloned()
-            .collect();
-        self.selected = self
-            .selected
-            .min(self.queried_history.len().saturating_sub(1));
-        self.skipped_items = self.skipped_items.min(self.selected);
+        self.refresh_list();
     }
 
     pub fn move_selection(&mut self, direction: MoveDirection) {
@@ -259,115 +260,78 @@ impl App {
         }
     }
 
-    // -- Selection -- //
+    // -- Clipboard（修复 #2 #6）-- //
+
     pub fn copy_selected(&mut self) {
-        let Some(selected_cmd) = self.current_list().get(self.selected) else {
+        let Some(selected_cmd) = self.current_list().get(self.selected).cloned() else {
             self.message = "No command to copy".into();
             return;
         };
 
-        // Platform-specific clipboard handling
-        #[cfg(target_os = "linux")]
-        self.handle_linux_clipboard(selected_cmd);
+        // 先平台工具，失败才 fallback 到 copypasta，不再重复复制
+        let copied = self.copy_via_platform(&selected_cmd)
+            || copypasta::ClipboardContext::new()
+                .and_then(|mut ctx| ctx.set_contents(selected_cmd.clone()))
+                .is_ok();
 
-        #[cfg(target_os = "macos")]
-        self.handle_macos_clipboard(selected_cmd);
-
-        #[cfg(target_os = "windows")]
-        self.handle_windows_clipboard(selected_cmd);
-
-        // Universal fallback
-        let _ = copypasta::ClipboardContext::new()
-            .and_then(|mut ctx| ctx.set_contents(selected_cmd.to_owned()));
-
-        self.message = "Copied to clipboard!".to_string();
+        self.message = if copied {
+            format!("Copied: {selected_cmd}")
+        } else {
+            "Failed to copy: no clipboard backend available".into()
+        };
     }
 
-    #[cfg(target_os = "linux")]
-    fn handle_linux_clipboard(&self, cmd: &str) {
-        use std::io::Write;
-        use std::process::{Command, Stdio};
-        use std::env;
-
-        let wayland = env::var("WAYLAND_DISPLAY").is_ok();
-        let x11 = env::var("DISPLAY").is_ok();
-
-        if wayland {
-            let _ = Command::new("wl-copy")
-                .stdin(Stdio::piped())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-                .and_then(|mut child| {
-                    if let Some(stdin) = child.stdin.as_mut() {
-                        stdin.write_all(cmd.as_bytes())?;
-                    }
-                    child.wait().map(|_| ())
-                })
-                .map_err(|e| eprintln!("Wayland clipboard error: {e}"));
-        } else if x11 {
-            let _ = Command::new("xclip")
-                .args(["-selection", "clipboard"])
-                .stdin(Stdio::piped())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-                .and_then(|mut child| {
-                    if let Some(stdin) = child.stdin.as_mut() {
-                        stdin.write_all(cmd.as_bytes())?;
-                    }
-                    child.wait().map(|_| ())
-                })
-                .map_err(|e| eprintln!("X11 clipboard error: {e}"));
-        }
-    }
-
-    #[cfg(target_os = "macos")]
-    fn handle_macos_clipboard(&self, cmd: &str) {
+    // 修复 #2：stdin 必须 take + drop 发送 EOF，否则子进程挂起、wait 死锁
+    fn pipe_to_child(cmd: &str, program: &str, extra_args: &[&str]) -> bool {
         use std::io::Write;
         use std::process::{Command, Stdio};
 
-        let _ = Command::new("pbcopy")
+        match Command::new(program)
+            .args(extra_args)
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
-            .and_then(|mut child| {
-                if let Some(stdin) = child.stdin.as_mut() {
-                    stdin.write_all(cmd.as_bytes())?;
-                }
-                child.wait().map(|_| ())
-            })
-            .map_err(|e| eprintln!("macOS clipboard error: {e}"));
+        {
+            Ok(mut child) => {
+                let mut wrote = true;
+                if let Some(mut stdin) = child.stdin.take() {
+                    wrote = stdin.write_all(cmd.as_bytes()).is_ok();
+                } // ← stdin 在这里 drop，子进程收到 EOF
+                wrote && child.wait().map(|s| s.success()).unwrap_or(false)
+            }
+            Err(_) => false,
+        }
     }
 
-    #[cfg(target_os = "windows")]
-    fn handle_windows_clipboard(&self, cmd: &str) {
-        use std::process::{Command, Stdio};
+    #[cfg(target_os = "linux")]
+    fn copy_via_platform(&self, cmd: &str) -> bool {
+        if env::var("WAYLAND_DISPLAY").is_ok() {
+            Self::pipe_to_child(cmd, "wl-copy", &[])
+        } else if env::var("DISPLAY").is_ok() {
+            Self::pipe_to_child(cmd, "xclip", &["-selection", "clipboard"])
+        } else {
+            false
+        }
+    }
 
-        let escaped = cmd.replace("'", "''");
-        let _ = Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-Command",
-                &format!("Set-Clipboard -Value '{}'", escaped),
-            ])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .and_then(|mut child| child.wait().map(|_| ()))
-            .map_err(|e| eprintln!("Windows clipboard error: {e}"));
+    #[cfg(target_os = "macos")]
+    fn copy_via_platform(&self, cmd: &str) -> bool {
+        Self::pipe_to_child(cmd, "pbcopy", &[])
+    }
+
+    // 修复：用 clip.exe 走 stdin，替代 PowerShell 拼字符串（无注入风险、更快）
+    #[cfg(target_os = "windows")]
+    fn copy_via_platform(&self, cmd: &str) -> bool {
+        Self::pipe_to_child(cmd, "clip", &[])
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    fn copy_via_platform(&self, _cmd: &str) -> bool {
+        false
     }
 
     // -- Bookmarks -- //
-    pub fn current_list(&self) -> &Vec<String> {
-        if self.bookmark_mode {
-            &self.bookmarks
-        } else {
-            &self.queried_history
-        }
-    }
 
     fn get_bookmark_path() -> PathBuf {
         directories::BaseDirs::new()
@@ -397,6 +361,7 @@ impl App {
         self.bookmark_mode = !self.bookmark_mode;
         self.selected = 0;
         self.skipped_items = 0;
+        self.refresh_list();
     }
 
     pub fn toggle_bookmark(&mut self) {
@@ -414,16 +379,15 @@ impl App {
         self.save_bookmarks();
 
         if self.bookmark_mode {
-            self.queried_history = self.bookmarks.clone();
-            self.selected = self.selected.min(self.queried_history.len().saturating_sub(1));
+            self.refresh_list();
         }
     }
 
     pub fn delete_bookmark(&mut self) {
-        if !self.bookmarks.is_empty() {
+        if self.selected < self.bookmarks.len() {
             self.bookmarks.remove(self.selected);
-            self.selected = self.selected.min(self.bookmarks.len().saturating_sub(1));
             self.save_bookmarks();
+            self.refresh_list();
             self.message = "Bookmark deleted!".to_string();
         }
     }

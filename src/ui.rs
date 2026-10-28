@@ -91,7 +91,7 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
     app.set_size(inner_area.height.into());
     
     f.render_widget(content_block, main_layout[1]);
-    f.render_widget(Paragraph::new(items), inner_area);
+    f.render_widget(Paragraph::new(items.clone()), inner_area);
 
     // Search bar
     let search_text = if app.search_mode {
@@ -147,42 +147,55 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
 
     // Help window (rendered last to overlay other components)
     if app.show_help {
-        // Create transparent overlay
-        f.render_widget(Clear, f.area());
-        
-        // Calculate help window position
         let help_area = centered_rect(60, 60, f.area());
-        let vertical_offset = (f.area().height.saturating_sub(help_area.height)) / 4;
+        let vertical_offset = f.area().height.saturating_sub(help_area.height) / 4;
+        let max_height = f.area().height.saturating_sub(vertical_offset).saturating_sub(2);
         let adjusted_rect = Rect::new(
             help_area.x,
             vertical_offset,
             help_area.width,
-            help_area.height.min(f.area().height - vertical_offset - 2),
+            help_area.height.min(max_height),
         );
 
-        // Create help content
+        // 修复 #14：只清弹窗区域，保留底层 UI
+        f.render_widget(Clear, adjusted_rect);
+
         let help_block = Block::default()
             .title(" Help (ESC to close) ")
             .borders(Borders::ALL)
             .style(Style::default().bg(Color::DarkGray));
 
-        let help_text = Text::from(app.get_help_text());
-        let help_para = Paragraph::new(help_text)
+        let help_para = Paragraph::new(Text::from(app.get_help_text()))
             .block(help_block)
             .wrap(Wrap { trim: true });
 
         f.render_widget(help_para, adjusted_rect);
     }
+
+    if items.is_empty() {
+        let empty = Paragraph::new(if app.bookmark_mode {
+            "No bookmarks yet (press b in history mode to add)"
+        } else {
+            "No history found"
+        })
+        .style(Style::default().fg(Color::DarkGray))
+        .alignment(Alignment::Center);
+        f.render_widget(empty, inner_area);
+    } else {
+        f.render_widget(Paragraph::new(items), inner_area);
+    }
 }
 
 /// Create centered rectangle with size constraints
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
-    let popup_width = (area.width * percent_x / 100).min(area.width - 4);
-    let popup_height = (area.height * percent_y / 100).min(area.height - 4);
-    
+    let popup_width = (area.width.saturating_mul(percent_x) / 100)
+        .min(area.width.saturating_sub(4));
+    let popup_height = (area.height.saturating_mul(percent_y) / 100)
+        .min(area.height.saturating_sub(4));
+
     Rect::new(
-        (area.width - popup_width) / 2,
-        (area.height - popup_height) / 3, // Adjusted vertical centering
+        area.width.saturating_sub(popup_width) / 2,
+        area.height.saturating_sub(popup_height) / 3,
         popup_width,
         popup_height,
     )

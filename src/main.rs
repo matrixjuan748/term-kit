@@ -11,14 +11,21 @@ use ratatui::prelude::*;
 use std::io::{stdout, Stdout};
 
 fn main() -> Result<()> {
+    // panic 时也要恢复终端
+    std::panic::set_hook(Box::new(|info| {
+        let _ = disable_raw_mode();
+        let _ = stdout().execute(LeaveAlternateScreen);
+        eprintln!("{info}");
+    }));
+
     let mut terminal = setup_terminal()?;
     let mut app = app::App::new();
 
-
-    events::handle_events(&mut terminal, &mut app)?;
+    // 修复 #4：先保存结果，恢复终端后再返回
+    let result = events::handle_events(&mut terminal, &mut app);
 
     restore_terminal(&mut terminal)?;
-    Ok(())
+    Ok(result?)
 }
 
 fn setup_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>> {

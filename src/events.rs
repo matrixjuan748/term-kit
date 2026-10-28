@@ -89,3 +89,4 @@ where std::io::Error: From<<B as ratatui::backend::Backend>::Error>
     }
     Ok(())
 }
+
