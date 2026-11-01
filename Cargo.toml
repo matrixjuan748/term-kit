@@ -2,6 +2,10 @@
 name = "term-kit"
 version = "0.1.0"
 edition = "2021"
+repository = "https://github.com/matrixjuan748/term-kit"
+authors = ["Weiming Huang <weiminghuang348@gmail.com>"]
+description = "A simple history finder using Rust"
+
 
 [dependencies]
 anyhow = "1.0.99"
@@ -19,3 +23,8 @@ wl-clipboard-rs = { version = "0.9.3", optional = true }
 [features]
 default = ["copypasta", "wayland"]
 wayland = ["wl-clipboard-rs"]  # 增加 wayland 依赖
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
