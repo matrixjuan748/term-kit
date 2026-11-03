@@ -1,3 +1,4 @@
+// app.rs
 use copypasta::ClipboardProvider;
 use std::cell::Cell;
 use std::fs;

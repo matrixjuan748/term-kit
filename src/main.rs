@@ -1,3 +1,4 @@
+// main.rs
 mod app;
 mod events;
 mod ui;

@@ -1,3 +1,4 @@
+// events.rs
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::Terminal;
 use std::io::Result;
