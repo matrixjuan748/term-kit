@@ -157,7 +157,6 @@ pub fn draw_ui(f: &mut Frame, app: &mut App) {
             help_area.height.min(max_height),
         );
 
-        // 修复 #14：只清弹窗区域，保留底层 UI
         f.render_widget(Clear, adjusted_rect);
 
         let help_block = Block::default()

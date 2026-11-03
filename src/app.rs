@@ -43,7 +43,7 @@ pub enum ShellType {
 pub struct App {
     bookmark_path: PathBuf,
     history: Vec<String>,
-    queried: Vec<String>, // 统一：当前模式 + 搜索过滤后的列表
+    queried: Vec<String>, 
     pub selected: usize,
     pub search_mode: bool,
     pub search_query: String,
@@ -112,7 +112,7 @@ impl ShellType {
         }
     }
 
-    // -- History Parsers（全部 lossy，不再 panic）-- //
+    // -- History Parsers -- //
 
     fn parse_powershell(content: Vec<u8>) -> Vec<String> {
         String::from_utf8_lossy(&content)
@@ -124,7 +124,6 @@ impl ShellType {
             .collect()
     }
 
-    // 修复 #11：没有 ';' 时保留整行（兼容未开 EXTENDED_HISTORY 的 zsh）
     fn parse_zsh(content: Vec<u8>) -> Vec<String> {
         String::from_utf8_lossy(&content)
             .lines()
@@ -136,7 +135,6 @@ impl ShellType {
             .collect()
     }
 
-    // 修复 #1：lossy 替代 expect
     fn parse_bash(content: Vec<u8>) -> Vec<String> {
         String::from_utf8_lossy(&content)
             .lines()
@@ -184,7 +182,6 @@ impl App {
         app
     }
 
-    // 修复 #9：读不到历史返回空列表，不再塞占位符
     fn load_history(shell: &ShellType) -> Vec<String> {
         let history_path = shell.history_path();
         fs::read(&history_path)
@@ -196,7 +193,6 @@ impl App {
         if self.bookmark_mode { &self.bookmarks } else { &self.history }
     }
 
-    // 修复 #5：搜索对 history 和 bookmarks 统一生效
     fn refresh_list(&mut self) {
         self.queried = if self.search_query.is_empty() {
             self.source_list().clone()
@@ -260,7 +256,7 @@ impl App {
         }
     }
 
-    // -- Clipboard（修复 #2 #6）-- //
+    // -- Clipboard -- //
 
     pub fn copy_selected(&mut self) {
         let Some(selected_cmd) = self.current_list().get(self.selected).cloned() else {
@@ -268,7 +264,6 @@ impl App {
             return;
         };
 
-        // 先平台工具，失败才 fallback 到 copypasta，不再重复复制
         let copied = self.copy_via_platform(&selected_cmd)
             || copypasta::ClipboardContext::new()
                 .and_then(|mut ctx| ctx.set_contents(selected_cmd.clone()))
@@ -281,7 +276,6 @@ impl App {
         };
     }
 
-    // 修复 #2：stdin 必须 take + drop 发送 EOF，否则子进程挂起、wait 死锁
     fn pipe_to_child(cmd: &str, program: &str, extra_args: &[&str]) -> bool {
         use std::io::Write;
         use std::process::{Command, Stdio};
@@ -297,7 +291,7 @@ impl App {
                 let mut wrote = true;
                 if let Some(mut stdin) = child.stdin.take() {
                     wrote = stdin.write_all(cmd.as_bytes()).is_ok();
-                } // ← stdin 在这里 drop，子进程收到 EOF
+                } 
                 wrote && child.wait().map(|s| s.success()).unwrap_or(false)
             }
             Err(_) => false,
@@ -320,7 +314,6 @@ impl App {
         Self::pipe_to_child(cmd, "pbcopy", &[])
     }
 
-    // 修复：用 clip.exe 走 stdin，替代 PowerShell 拼字符串（无注入风险、更快）
     #[cfg(target_os = "windows")]
     fn copy_via_platform(&self, cmd: &str) -> bool {
         Self::pipe_to_child(cmd, "clip", &[])
