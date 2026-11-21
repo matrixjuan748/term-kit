@@ -7,6 +7,12 @@ repository = "https://github.com/matrixjuan748/term-kit"
 authors = ["Weiming Huang <weiminghuang348@gmail.com>"]
 description = "A simple history finder using Rust"
 
+[package.metadata.wix]
+upgrade-guid = "8EC346EB-FAEE-4F27-B49E-44469818A6D1"
+path-guid = "CD6B69FE-9CC6-4346-AAAC-396DF0832471"
+license = false
+eula = false
+
 [dependencies]
 anyhow = "1.0.99"
 copypasta = "0.10.2"
