@@ -708,28 +708,3 @@ fn preview(command: &str) -> String {
     }
     preview
 }
-
-#[cfg(test)]
-impl App {
-    pub fn for_test(history: Vec<String>) -> Self {
-        let mut app = Self {
-            bookmark_path: None,
-            bookmark_candidates: Vec::new(),
-            history,
-            bookmarks: Vec::new(),
-            queried: Vec::new(),
-            selected: 0,
-            skipped_items: 0,
-            search_mode: false,
-            search_query: String::new(),
-            show_help: false,
-            should_quit: false,
-            message: String::new(),
-            bookmark_mode: false,
-            size: 0,
-            shell: ShellType::Bash,
-        };
-        app.refresh_list(true);
-        app
-    }
-}
