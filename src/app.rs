@@ -710,7 +710,7 @@ fn preview(command: &str) -> String {
 }
 
 #[cfg(test)]
-impl App {。
+impl App {
     pub fn for_test(history: Vec<String>) -> Self {
         let mut app = Self {
             bookmark_path: None,
