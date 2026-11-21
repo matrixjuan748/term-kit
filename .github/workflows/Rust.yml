@@ -12,8 +12,6 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
 
-  CLIPPY_OPTIONS: "-D warnings -D clippy::unwrap_used"
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref && github.ref || github.run_id }}
   cancel-in-progress: true
@@ -21,7 +19,7 @@ concurrency:
 jobs:
   cross-platform:
     strategy:
-      fail-fast: false  
+      fail-fast: false
       matrix:
         platform: [ubuntu-latest, macos-latest, windows-latest]
         include:
@@ -44,17 +42,8 @@ jobs:
         profile: minimal
         components: rustfmt, clippy
 
-    - name: Install Linux dependencies
-      if: matrix.platform == 'ubuntu-latest'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y xclip wl-clipboard
-
-    - name: Install Windows dependencies
-      if: matrix.platform == 'windows-latest'
-      run: |
-        # 确保PowerShell可用
-        echo "Windows dependencies already included"
+    - name: Check formatting
+      run: cargo fmt --all -- --check
 
     - name: Build
       run: cargo build --verbose
@@ -63,12 +52,4 @@ jobs:
       run: cargo test --verbose
 
     - name: Clippy check
-      run: cargo clippy --all-targets -- $CLIPPY_OPTIONS
-
-    - name: Clipboard integration test
-      shell: bash
-      run: |
-
-        echo "test clipboard content" > clipboard_test.txt
-        
-        cargo test --test clipboard_test -- --nocapture || echo "Clipboard test failed but continuing..."
+      run: cargo clippy --all-targets -- -D warnings -D clippy::unwrap_used

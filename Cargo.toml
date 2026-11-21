@@ -2,27 +2,18 @@
 name = "term-kit"
 version = "0.1.105"
 edition = "2021"
+rust-version = "1.88"
 repository = "https://github.com/matrixjuan748/term-kit"
 authors = ["Weiming Huang <weiminghuang348@gmail.com>"]
 description = "A simple history finder using Rust"
 
-
 [dependencies]
 anyhow = "1.0.99"
-crossterm = "0.28.1"
+copypasta = "0.10.2"
+crossterm = "0.29.0"
 directories = "6.0.0"
 ratatui = "0.30.2"
-serde = { version = "1.0.219", features = ["derive"] }
-textwrap = "0.16.2"
-copypasta = { version = "0.10.2", optional = true }  # 添加 optional = true
 serde_json = "1.0.148"
-
-[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
-wl-clipboard-rs = { version = "0.9.3", optional = true }
-
-[features]
-default = ["copypasta", "wayland"]
-wayland = ["wl-clipboard-rs"]  # 增加 wayland 依赖
 
 # The profile that 'dist' will build with
 [profile.dist]

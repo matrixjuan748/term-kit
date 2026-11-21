@@ -5,7 +5,7 @@
 **A blazing-fast terminal UI for browsing, searching, and copying your shell command history.**
 
 [![Latest Release](https://img.shields.io/github/v/release/matrixjuan748/term-kit?logo=github)](https://github.com/matrixjuan748/term-kit/releases/latest)
-[![Rust](https://img.shields.io/badge/rust-1.75%2B-orange?logo=rust)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-1.88%2B-orange?logo=rust)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)](#-installation)
 
@@ -14,31 +14,32 @@
 ---
 **term-kit** is a lightweight TUI (Terminal User Interface) application built with [ratatui](https://github.com/ratatui/ratatui) that lets you interactively explore your shell history — search through thousands of past commands, bookmark your favorites, and copy them to your clipboard in an instant.
 
-```bash
-┌───────────────────────────────────────────────────────────────────┐
-│ History Finder v0.1 │ Mode: HISTORY │ [B]Toggle [/]Search [q]Quit │
-├───────────────────────────────────────────────────────────────────┤
-│ Command History                                                   │
-│   1  cargo build --release                                        │
-│   2  git rebase -i HEAD~3                                         │
-│ ▸ 3  docker compose up -d --build                                 │
-│   4  ffmpeg -i input.mp4 -c:v libx264 output.mkv                  │
-│   5  rg "TODO" --type rust -l                                     │
-├───────────────────────────────────────────────────────────────────┤
-│ /docker                                                           │
-├───────────────────────────────────────────────────────────────────┤
-│ HISTORY  B Switch  b Bookmark  Copied: docker compose up -d...    │
-└───────────────────────────────────────────────────────────────────┘
+```text
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                   History Finder v0.1.105 | Bash | [B]Toggle | [/]Search | [h]Help | [q]Quit                   │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Command History (Press B to switch) ──────────────────────────────────────────────────────────────────────────┐
+│   1  cargo build --release                                                                                     │
+│   2  git rebase -i HEAD~3                                                                                      │
+│   3  docker compose up -d --build                                                                              │
+│   4  ffmpeg -i input.mp4 -c:v libx264 output.mkv                                                               │
+│   5  rg "TODO" --type rust -l                                                                                  │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Search ───────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ /docker                                                                                                        │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ HISTORY  B Switch  b Bookmark Copied: docker compose up -d --build
 ```
 
 ## Features
 
 | Feature | Description |
 |---|---|
-| **Instant Search** | Filter thousands of history entries as you type |
+| **Instant Search** | Case-insensitive filtering as you type, up to 5,000 entries |
 | **One-key Copy** | Press `Enter` to copy any command straight to your clipboard |
 | **Bookmarks** | Star frequently-used commands and keep them in a dedicated view |
-| **Multi-shell** | Auto-detects and parses **Bash**, **Zsh**, **Fish**, and **PowerShell** history |
+| **Multi-shell** | Reads **Bash**, **Zsh**, **Fish**, and **PowerShell** history — including **Git Bash** on Windows |
+| **Picks the right file** | Follows `$SHELL`, falls back to the most recently written history file, and shows which one it loaded |
 | **Cross-platform** | Native clipboard support on Linux (X11 / Wayland), macOS, and Windows |
 | **Zero config** | Runs out of the box — no configuration files needed |
 | **Clean TUI** | Smooth rendering powered by ratatui + crossterm |
@@ -95,25 +96,30 @@ That's it. term-kit will detect your current shell, load its history file, and d
 |---|---|
 | `↑` / `k` | Move selection up |
 | `↓` / `j` | Move selection down |
+| `PgUp` / `PgDn` | Move one screen |
+| `Home` / `End` | Jump to first / last entry |
 | `Enter` | Copy the selected command to clipboard |
 | `/` | Enter search mode |
 | `b` | Toggle bookmark on the selected command |
 | `B` | Switch between **History** ↔ **Bookmark** mode |
 | `d` | Delete selected bookmark *(bookmark mode only)* |
-| `h` | Show / hide the help overlay |
-| `q` | Quit |
+| `h` / `F1` | Show the help overlay |
+| `Esc` | Close help / leave bookmark mode |
+| `q` / `Ctrl+C` | Quit |
 
 ### Search Mode
 
 | Key | Action |
 |---|---|
-| *any printable char* | Append to the search query |
+| *any printable char* | Append to the search query (case-insensitive) |
 | `Backspace` | Remove last character |
-| `Esc` | Cancel search and restore full list |
+| `Enter` | Copy the selection and leave search mode |
+| `Esc` | Leave search mode — the cursor stays on the command you were looking at |
+| `↑` / `↓` | Move selection while the filter stays active |
 
 ## Supported Shells
 
-term-kit reads the `$SHELL` environment variable (or defaults on Windows) to locate and parse the correct history file:
+term-kit reads the `$SHELL` environment variable to locate and parse the correct history file. If that file doesn't exist or is empty (for example, you launched it from **cmd** but only use **Git Bash**), it falls back to the most recently written history file and tells you which one it loaded in the status bar.
 
 | Shell | History file |
 |---|---|
@@ -121,15 +127,15 @@ term-kit reads the `$SHELL` environment variable (or defaults on Windows) to loc
 | **Zsh** | `~/.zsh_history` |
 | **Fish** | `~/.local/share/fish/fish_history` |
 | **PowerShell** (Linux/macOS) | `~/.local/share/powershell/PSReadLine/ConsoleHost_history.txt` |
-| **PowerShell** (Windows) | `%AppData%\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt` |
+| **PowerShell** (Windows) | `%APPDATA%\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt` |
 
-> Bookmarks are persisted as JSON in `~/.term_kit_bookmarks`.
+> Bookmarks are persisted as JSON in `~/.term_kit_bookmarks`. If the home directory isn't writable (read-only home, sandboxed shell), it silently falls back to the platform data directory and then the temp directory. A corrupted file is moved to `~/.term_kit_bookmarks.corrupt` instead of being silently overwritten.
 
 ## Building from Source
 
 ### Prerequisites
 
-- [Rust](https://www.rust-lang.org/tools/install) **≥ 1.75**
+- [Rust](https://www.rust-lang.org/tools/install) **≥ 1.88** (required by ratatui 0.30)
 - On Linux (optional, for clipboard): `xclip` (X11) or `wl-clipboard` (Wayland)
 
 ### Build
@@ -180,4 +186,3 @@ Distributed under the **Apache License 2.0** — see [LICENSE](LICENSE) for deta
 Built with 🦀 and [ratatui](https://github.com/ratatui/ratatui)
 
 </div>
-
